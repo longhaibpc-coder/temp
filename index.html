@@ -1,0 +1,4230 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VNPT — Tra cứu dữ liệu (Dynamic Filters)</title>
+<style>
+  :root{
+    --vnpt-blue-900:#00264d;
+    --vnpt-blue-700:#00509e;
+    --vnpt-blue-600:#0068c7;
+    --vnpt-blue-100:#e8f2fc;
+    --vnpt-blue-200:#d4e6fa;
+    --vnpt-yellow:#ffcc00;
+    --ink:#0d2436;
+    --muted:#5c7186;
+    --line:#dbe6f0;
+    --card:#ffffff;
+    --bg:#f2f6fb;
+    --radius:14px;
+    --combo-bg:#f8faff;
+    --combo-border:#b8d0e8;
+    font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    overflow-x:auto;
+    overflow-y:auto;
+    height:100vh;
+  }
+  .topbar{
+    background:linear-gradient(120deg,#0a3158 0%,#0f4d85 58%,#1a6fb4 100%);
+    color:#fff;
+    padding:16px 22px;
+    display:grid;
+    grid-template-columns:minmax(260px,auto) minmax(260px,1fr) auto;
+    grid-template-areas:"brand search actions";
+    align-items:center;
+    gap:12px 16px;
+    flex-shrink:0;
+    position:-webkit-sticky;
+    position:sticky;
+    top:0;
+    z-index:50;
+    box-shadow:0 6px 20px rgba(8,32,58,.28);
+  }
+  .brand{
+    grid-area:brand;
+    display:flex;
+    align-items:center;
+    gap:14px;
+    min-width:0;
+  }
+  .logo-mark{
+    width:52px;height:52px;border-radius:12px;
+    background:#fff;
+    display:flex;align-items:center;justify-content:center;
+    color:#0f4d85;font-weight:800;font-size:13px;
+    letter-spacing:0;
+    line-height:1;
+    border:1px solid rgba(255,255,255,.45);
+    box-shadow:0 2px 8px rgba(0,0,0,.16);
+    flex-shrink:0;
+  }
+  .brand h1{
+    margin:0;font-size:19px;font-weight:700;letter-spacing:.2px;
+  }
+  .brand p{
+    margin:2px 0 0;font-size:12.5px;color:#cfe3f7;font-weight:400;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  @media (max-width:1180px){
+    .topbar{
+      grid-template-columns:1fr auto;
+      grid-template-areas:
+        "brand actions"
+        "search search";
+      align-items:start;
+    }
+  }
+  @media (max-width:900px){
+    .topbar{
+      grid-template-columns:1fr;
+      grid-template-areas:
+        "brand"
+        "search"
+        "actions";
+      padding:14px 14px;
+    }
+    .brand p{white-space:normal;}
+  }
+
+  .app-layout{
+    display:grid;
+    grid-template-columns:320px minmax(0,1fr);
+    gap:20px;
+    padding:20px;
+    min-height:calc(100vh - 100px);
+    align-items:start;
+  }
+  @media (max-width:900px), (orientation: portrait){
+    .app-layout{grid-template-columns:1fr;min-height:auto;}
+    .app-layout > .panel.dynamic-sticky{
+      position:static !important;
+      top:auto !important;
+    }
+    .app-layout > aside.panel.dynamic-sticky{
+      width:100%;
+      max-width:100%;
+      justify-self:stretch;
+    }
+    .app-layout > aside.panel.dynamic-sticky .filters{
+      width:100%;
+      min-width:0;
+      max-width:100%;
+    }
+
+    /* Top filters switch to horizontal, space-efficient wrapped layout */
+    .filters{
+      padding:14px;
+    }
+    #dynamicFiltersContainer{
+      display:flex;
+      flex-wrap:wrap;
+      align-items:stretch;
+      gap:10px;
+      overflow:visible;
+      padding-bottom:0;
+    }
+    #dynamicFiltersContainer .filter-group{
+      flex:1 1 280px;
+      flex:1 1 clamp(220px, calc(50% - 6px), 560px);
+      min-width:220px;
+      max-width:100%;
+      margin-bottom:0;
+      padding:10px;
+      border:1px solid var(--line);
+      border-radius:10px;
+      background:#fbfdff;
+    }
+    #dynamicFiltersContainer .filter-group:last-child{
+      border-bottom:1px solid var(--line);
+      padding-bottom:10px;
+    }
+    #dynamicFiltersContainer .combo-dropdown{
+      min-width:100%;
+      max-width:none;
+    }
+
+    @media (max-width:640px){
+      #dynamicFiltersContainer .filter-group{
+        flex:1 1 100%;
+        min-width:0;
+      }
+    }
+  }
+  .app-layout > .panel.dynamic-sticky{
+    position:-webkit-sticky;
+    position:sticky;
+    align-self:start;
+  }
+  .app-layout > aside.panel.dynamic-sticky{
+    width:320px;
+    max-width:320px;
+    justify-self:start;
+  }
+
+  .panel{
+    background:var(--card);
+    border-radius:var(--radius);
+    border:1px solid var(--line);
+    box-shadow:0 1px 2px rgba(13,36,54,.04);
+  }
+  
+  .filters{
+    padding:18px 18px 22px;
+  }
+  .filters h2{
+    font-size:13px;
+    text-transform:uppercase;
+    letter-spacing:.6px;
+    color:var(--vnpt-blue-700);
+    margin:0 0 14px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    flex-shrink:0;
+  }
+  .reset-btn{
+    background:none;border:none;color:var(--muted);
+    font-size:12px;cursor:pointer;text-decoration:underline;
+    padding:0;
+  }
+  .reset-btn:hover{color:var(--vnpt-blue-700);}
+
+.config-guide{display:none;}
+body.config-mode .config-guide{display:block;}
+.config-guide{
+  margin-bottom:18px;
+  padding:12px 14px;
+  border-radius:10px;
+  border:1px solid #ffe08a;
+  background:#fffaf0;
+  font-size:12.5px;
+  line-height:1.55;
+  color:var(--ink);
+}
+.config-guide summary{
+  cursor:pointer;
+  font-weight:700;
+  font-size:12.5px;
+  color:#8a6100;
+  list-style:none;
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.config-guide summary::-webkit-details-marker{display:none;}
+.config-guide summary::before{
+  content:'▶';
+  font-size:9px;
+  transition:transform .15s ease;
+}
+.config-guide[open] summary::before{
+  transform:rotate(90deg);
+}
+.config-guide ul{
+  margin:10px 0 0;
+  padding-left:18px;
+}
+.config-guide li{
+  margin-bottom:8px;
+}
+.config-guide li:last-child{margin-bottom:0;}
+.config-guide b{color:var(--vnpt-blue-700);}
+.config-guide .cg-tag{
+  display:inline-block;
+  min-width:18px;
+  text-align:center;
+  padding:0 5px;
+  border-radius:5px;
+  font-weight:700;
+  font-family:monospace;
+  background:var(--vnpt-blue-100);
+  color:var(--vnpt-blue-700);
+  margin-right:2px;
+}
+.config-guide .cg-green{color:#1c7a4c;}
+.filter-group{
+  margin-bottom:20px;
+  padding-bottom:18px;
+  border-bottom:2px solid #c6d9ec;
+}
+  .filter-group:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0;}
+  .filter-label{
+    font-size:12.5px;
+    font-weight:700;
+    color:var(--ink);
+    margin-bottom:9px;
+    display:block;
+  }
+  .search-box{
+    width:100%;
+    padding:9px 12px;
+    border:1px solid var(--line);
+    border-radius:99px;
+    font-size:13.5px;
+    outline:none;
+    background:var(--vnpt-blue-100);
+  }
+  .search-box:focus{border-color:var(--vnpt-blue-600);}
+  
+  .chip-list{display:flex;flex-wrap:wrap;gap:6px;}
+  .chip{
+    font-size:12px;
+    padding:6px 11px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background:#fff;
+    cursor:pointer;
+    color:var(--muted);
+    user-select:none;
+    transition:all .12s ease;
+  }
+  .chip:hover{border-color:var(--vnpt-blue-600);color:var(--vnpt-blue-700);}
+  .chip.active{
+    background:var(--vnpt-blue-700);
+    border-color:var(--vnpt-blue-700);
+    color:#fff;
+    font-weight:600;
+  }
+  .chip.select-mode-single-option{border-color:#28a26a;}
+
+  .combo-box {
+    position: relative;
+    width:100%;
+  }
+  .combo-header {
+    padding:9px 12px;
+    border:1px solid var(--combo-border);
+    border-radius:999px;
+    background:var(--combo-bg);
+    font-size:13px;
+    cursor:pointer;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    color:var(--ink);
+    transition:border-color .15s ease;
+  }
+  .combo-header:hover {
+    border-color:var(--vnpt-blue-600);
+  }
+  .combo-header.select-mode-single-option {
+    border-color:#28a26a;
+  }
+  .combo-dropdown {
+    position:absolute;
+    left:0;
+    width:100%;
+    background:#fff;
+    border:1px solid var(--combo-border);
+    border-radius:9px;
+    margin-top:4px;
+    box-shadow:0 6px 20px rgba(0,40,80,.12);
+    z-index:100;
+    display:none;
+    flex-direction:column;
+    max-height:250px;
+    min-width:100%;
+  }
+  .combo-dropdown.open {
+    display:flex;
+  }
+  .combo-dropdown.drop-up {
+    top: auto;
+    bottom: 100%;
+    margin-top: 0;
+    margin-bottom: 4px;
+  }
+  .combo-dropdown.drop-down {
+    top: 100%;
+    bottom: auto;
+    margin-top: 4px;
+    margin-bottom: 0;
+  }
+  .combo-actions {
+    display:flex;
+    gap:12px;
+    padding:8px 12px;
+    border-bottom:1px solid var(--line);
+    font-size:12px;
+  }
+  .combo-actions span {
+    color:var(--vnpt-blue-700);
+    cursor:pointer;
+    font-weight:600;
+  }
+  .combo-actions span:hover {text-decoration:underline;}
+  .combo-options {
+    overflow-y:auto;
+    padding:8px 0;
+  }
+  .combo-options::-webkit-scrollbar {
+    width:5px;
+  }
+  .combo-options::-webkit-scrollbar-track {
+    background:var(--bg);
+    border-radius:3px;
+  }
+  .combo-options::-webkit-scrollbar-thumb {
+    background:var(--line);
+    border-radius:3px;
+  }
+  .combo-option {
+    padding:6px 12px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:13px;
+    cursor:pointer;
+  }
+  .combo-option.select-mode-single-option{
+    border:1px solid #28a26a;
+    border-radius:8px;
+    margin:2px 8px;
+    padding:6px 10px;
+  }
+  .combo-option:hover {
+    background:var(--vnpt-blue-100);
+  }
+  .combo-option input[type="checkbox"],
+  .combo-option input[type="radio"] {
+    margin:0;
+    cursor:pointer;
+  }
+
+  .dual-slider {
+    position:relative;
+    width:100%;
+    height:20px;
+    margin:4px 0 14px;
+  }
+  .dual-slider input[type="range"] {
+    position:absolute;
+    width:100%;
+    height:100%;
+    background:none;
+    pointer-events:none;
+    -webkit-appearance:none;
+    outline:none;
+    margin:0;
+    z-index:2;
+  }
+  .dual-slider input[type="range"]::-webkit-slider-thumb {
+    height:16px;
+    width:16px;
+    border-radius:50%;
+    background:var(--vnpt-blue-700);
+    pointer-events:auto;
+    -webkit-appearance:none;
+    cursor:pointer;
+    box-shadow:0 1px 3px rgba(0,0,0,0.3);
+  }
+  .dual-slider input[type="range"]::-moz-range-thumb {
+    height:16px;
+    width:16px;
+    border-radius:50%;
+    background:var(--vnpt-blue-700);
+    pointer-events:auto;
+    border:none;
+    cursor:pointer;
+    box-shadow:0 1px 3px rgba(0,0,0,0.3);
+  }
+  .slider-track {
+    position:absolute;
+    top:50%;
+    transform:translateY(-50%);
+    width:100%;
+    height:4px;
+    background:var(--line);
+    border-radius:2px;
+    z-index:1;
+  }
+  .slider-fill {
+    position:absolute;
+    top:50%;
+    transform:translateY(-50%);
+    height:4px;
+    background:var(--vnpt-blue-700);
+    border-radius:2px;
+    z-index:1;
+  }
+  .range-values {
+    display:flex;
+    justify-content:space-between;
+    font-size:11.5px;
+    color:var(--muted);
+    margin-bottom:8px;
+  }
+  .range-values b {color:var(--vnpt-blue-700);font-weight:700;}
+
+  .results{
+    display:flex;
+    flex-direction:column;
+    width:100%;
+    min-width:0;
+  }
+  .results-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:16px 20px;
+    flex-wrap:wrap;
+    gap:10px;
+    flex-shrink:0;
+    border-bottom:1px solid var(--line);
+  }
+  .results-header h2{
+    font-size:16px;margin:0;color:var(--vnpt-blue-900);
+    display:flex;
+    align-items:baseline;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+  .result-count-inline{
+    font-size:13px;
+    color:var(--muted);
+    font-weight:600;
+  }
+  .results-header .sub{
+    font-size:12.5px;color:var(--muted);margin-top:2px;
+  }
+  .last-updated{
+    margin-top:5px;
+    font-size:12px;
+    font-weight:700;
+    color:#1c7a4c;
+    display:none;
+    align-items:center;
+    gap:6px;
+  }
+  .last-updated .lu-time{
+    font-weight:600;
+  }
+
+  .uniform-note{
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    gap:6px 14px;
+    padding:10px 20px;
+    background:var(--vnpt-blue-100);
+    border-bottom:1px solid var(--line);
+    font-size:12.5px;
+    color:var(--ink);
+    flex-shrink:0;
+  }
+  .uniform-note-label{
+    font-weight:700;
+    color:var(--vnpt-blue-700);
+    text-transform:uppercase;
+    font-size:11px;
+    letter-spacing:.4px;
+  }
+  .uniform-note-item{
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:999px;
+    padding:4px 12px;
+  }
+  .uniform-note-item b{
+    color:var(--vnpt-blue-700);
+    font-weight:700;
+  }
+
+  .pagination-controls {
+    display:flex;
+    align-items:center;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+  .pagination-controls select {
+    padding:6px 8px;
+    border:1px solid var(--line);
+    border-radius:6px;
+    font-size:12px;
+    background:#fff;
+  }
+  .infinite-status{
+    text-align:center;
+    font-size:12px;
+    color:var(--muted);
+    padding:8px 12px 0;
+  }
+  .infinite-status.clickable{
+    cursor:pointer;
+    color:var(--vnpt-blue-700);
+    font-weight:600;
+    text-decoration:underline;
+    user-select:none;
+  }
+  .infinite-status.clickable:hover{
+    color:var(--vnpt-blue-900);
+  }
+  .refresh-btn{
+    display:inline-flex;
+    width:32px;
+    height:32px;
+    padding:0;
+    border:1px solid var(--line);
+    border-radius:50%;
+    align-items:center;
+    justify-content:center;
+    font-size:16px;
+    line-height:1;
+    cursor:pointer;
+    background:#fff;
+    color:var(--muted);
+    opacity:.6;
+    transition:all .15s ease;
+  }
+  .refresh-btn:hover{opacity:1;color:var(--vnpt-blue-700);border-color:var(--vnpt-blue-600);}
+  .refresh-btn.is-loading{
+    pointer-events:none;
+    opacity:.75;
+  }
+  .refresh-btn.is-loading span{
+    display:inline-block;
+    animation:spinRefresh .9s linear infinite;
+  }
+  .infinite-sentinel{
+    height:1px;
+  }
+
+  .table-wrap{
+    overflow-x:auto;
+    overflow-y:visible;
+    padding:0 4px 16px;
+    flex:1;
+    width:100%;
+    min-width:0;
+  }
+  
+  table{
+    width:-webkit-max-content;
+    width:max-content;
+    border-collapse:collapse;
+    font-size:13px;
+    min-width:100%;
+    table-layout:fixed;
+  }
+  thead th{
+    text-align:left;
+    font-size:11.5px;
+    text-transform:uppercase;
+    letter-spacing:.4px;
+    color:var(--vnpt-blue-700);
+    background:var(--vnpt-blue-100);
+    padding:10px 14px;
+    position:-webkit-sticky;
+    position:sticky;
+    top:0;
+    border-bottom:2px solid var(--vnpt-blue-600);
+    border-right:1px solid rgba(190,215,238,.35);
+    white-space:nowrap;
+    cursor:pointer;
+    user-select:none;
+    transition:background .15s ease;
+    z-index:2;
+  }
+  thead th:last-child{border-right:none;}
+  thead th:hover {
+    background:var(--vnpt-blue-200);
+  }
+  thead th .sort-indicator {
+    display:inline-block;
+    margin-left:4px;
+    font-size:11px;
+    opacity:0.75;
+    min-width:12px;
+    text-align:center;
+    font-weight:700;
+  }
+  thead th .sort-indicator.active {
+    opacity:1;
+    color:var(--vnpt-blue-900);
+  }
+  tbody td{
+    padding:11px 14px;
+    border-bottom:1px solid var(--line);
+    border-right:1px solid rgba(219,230,240,.35);
+    vertical-align:top;
+    white-space:nowrap;
+  }
+  tbody td:last-child{border-right:none;}
+  tbody tr:nth-child(odd){background:#fff;}
+  tbody tr:nth-child(even){background:#f4f8fd;}
+  tbody tr:hover{background:#e8f2fc;}
+  tbody td.truncated-cell{cursor:help;}
+  .row-number {
+    color:var(--muted);
+    font-size:12px;
+    text-align:center;
+  }
+  .empty-state{
+    padding:60px 20px;text-align:center;color:var(--muted);
+  }
+  .empty-state .icon{font-size:34px;margin-bottom:10px;}
+  footer.note{
+    padding:14px 20px 22px;font-size:11.5px;color:var(--muted);
+    border-top:1px solid var(--line);
+    flex-shrink:0;
+  }
+
+  .topbar-actions{
+    grid-area:actions;
+    display:flex;
+    align-items:center;
+    justify-content:flex-end;
+    gap:10px;
+    flex-wrap:nowrap;
+    min-width:0;
+  }
+  .topbar-selects,
+  .topbar-admin-actions{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    flex-wrap:wrap;
+    min-width:0;
+  }
+  .topbar-selects{flex-wrap:nowrap;}
+  .topbar-admin-actions{
+    margin-left:auto;
+    justify-content:flex-end;
+  }
+  .topbar-search{
+    grid-area:search;
+    position:relative;
+    display:flex;
+    align-items:center;
+    min-width:240px;
+    max-width:560px;
+    width:100%;
+    justify-self:stretch;
+  }
+  .topbar-search-icon{
+    position:absolute;
+    left:12px;
+    color:var(--muted);
+    font-size:13px;
+    pointer-events:none;
+  }
+  .topbar-search-input{
+    width:100%;
+    height:36px;
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,.6);
+    background:#fff;
+    color:var(--ink);
+    padding:0 34px 0 34px;
+    font-size:13px;
+    outline:none;
+  }
+  .topbar-search-input:focus{
+    border-color:var(--vnpt-yellow);
+    box-shadow:0 0 0 2px rgba(255,204,0,.25);
+  }
+  .topbar-search .clear-search{
+    position:absolute;
+    right:10px;
+    top:50%;
+    transform:translateY(-50%);
+    background:none;
+    border:none;
+    font-size:14px;
+    color:var(--muted);
+    cursor:pointer;
+    padding:0 4px;
+    display:none;
+  }
+  .topbar-search .clear-search:hover{color:var(--vnpt-blue-700);}
+  .topbar-search .clear-search.visible{display:block;}
+
+  @media (max-width:1180px){
+    .topbar-search{min-width:200px;max-width:none;}
+    .topbar-actions{align-items:flex-start;}
+    .topbar-actions{flex-wrap:wrap;}
+    .topbar-selects{flex-wrap:wrap;}
+    .topbar-admin-actions{margin-left:0;}
+  }
+  @media (max-width:900px){
+    .topbar-actions{justify-content:flex-start;width:100%;gap:10px;}
+    .app-layout > aside.panel.dynamic-sticky{
+      width:calc(100vw - 40px);
+      max-width:calc(100vw - 40px);
+    }
+    .app-layout > aside.panel.dynamic-sticky,
+    .app-layout > aside.panel.dynamic-sticky .filters{
+      width:calc(100vw - 40px);
+      min-width:0;
+      max-width:calc(100vw - 40px);
+    }
+    .topbar-selects,.topbar-admin-actions{width:100%;}
+  }
+  .admin-btn{
+    background:var(--vnpt-yellow);
+    border:1px solid var(--vnpt-yellow);
+    color:var(--vnpt-blue-900);
+    font-size:12.5px;
+    font-weight:600;
+    padding:9px 16px;
+    border-radius:999px;
+    cursor:pointer;
+    transition:all .15s ease;
+    white-space:nowrap;
+  }
+  .admin-btn:hover{filter:brightness(1.05);}
+  .admin-btn.active-config{
+    background:#e63946;
+    border-color:#e63946;
+    color:#fff;
+  }
+  
+  /* Ẩn admin buttons mặc định, chỉ hiện khi ?mode=admin */
+  .admin-btn {
+    display: none !important;
+  }
+  body.admin-mode .admin-btn {
+    display: inline-block !important;
+  }
+  @keyframes spinRefresh{
+    from{transform:rotate(0deg);} to{transform:rotate(360deg);}
+  }
+
+  .scroll-top-btn{
+    position:fixed;
+    right:12px;
+    bottom:20px;
+    width:34px;
+    height:34px;
+    border:none;
+    border-radius:50%;
+    background:rgba(0,80,158,.56);
+    color:#fff;
+    font-size:14px;
+    line-height:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    box-shadow:0 4px 12px rgba(0,20,40,.16);
+    cursor:pointer;
+    opacity:0;
+    transform:translateY(8px);
+    pointer-events:none;
+    transition:opacity .2s ease, transform .2s ease, background .15s ease, box-shadow .15s ease;
+    z-index:190;
+  }
+  .scroll-top-btn:hover{
+    background:rgba(0,80,158,.78);
+    box-shadow:0 6px 14px rgba(0,20,40,.2);
+  }
+  .scroll-top-btn.show{
+    opacity:.58;
+    transform:translateY(0);
+    pointer-events:auto;
+  }
+
+  
+  /* Luôn hiển thị sourceSelect và sheetSelect */
+  #sourceSelect, #sheetSelect {
+    display: inline-block !important;
+    color: var(--ink) !important;
+    background: #ffffff !important;
+    border: 1px solid rgba(255,255,255,.5) !important;
+    margin: 0 !important;
+    height: 36px;
+    border-radius:999px;
+    padding:0 10px;
+    line-height: 1;
+    vertical-align: middle;
+    min-width: 110px;
+    max-width: 220px;
+    max-width: clamp(130px, 20vw, 220px);
+  }
+
+  .col-x-btn{
+    display:none;
+    margin-left:8px;
+    width:16px;height:16px;
+    border-radius:50%;
+    background:#fff;
+    border:1px solid var(--muted);
+    color:var(--muted);
+    font-size:10px;
+    line-height:14px;
+    text-align:center;
+    cursor:pointer;
+    vertical-align:middle;
+    user-select:none;
+  }
+  .col-x-btn:hover{border-color:#c0392b;color:#c0392b;}
+  .col-x-btn.marked{background:#c0392b;border-color:#c0392b;color:#fff;}
+  body.config-mode .col-x-btn{display:inline-block;}
+  thead th.col-marked-hidden{opacity:.45;text-decoration:line-through;}
+
+  .filter-label-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    margin-bottom:9px;
+  }
+  .filter-label-row .filter-label{margin-bottom:0;}
+  .filter-actions{
+    display:flex;
+    align-items:center;
+    gap:5px;
+    flex-shrink:0;
+  }
+  .filter-action-btn{
+    display:none;
+    width:16px;height:16px;
+    border-radius:50%;
+    background:#fff;
+    border:1px solid var(--muted);
+    color:var(--muted);
+    font-size:10px;
+    line-height:14px;
+    text-align:center;
+    cursor:pointer;
+    user-select:none;
+  }
+  .filter-action-btn:hover{border-color:var(--vnpt-blue-600);color:var(--vnpt-blue-700);}
+  .filter-plus-btn{font-weight:700;}
+  .filter-minus-btn{font-weight:700;display:none !important;}
+  body.config-mode .filter-minus-btn.visible{display:inline-block !important;}
+  .filter-x-btn{font-size:10px;}
+  .filter-x-btn:hover{border-color:#c0392b;color:#c0392b;}
+  .filter-x-btn.marked{background:#c0392b;border-color:#c0392b;color:#fff;}
+  body.config-mode .filter-action-btn{display:inline-block;}
+  .filter-group.filter-marked-hidden{opacity:.45;}
+
+  .modal-overlay{
+    display:none;
+    position:fixed;top:0;right:0;bottom:0;left:0;
+    background:rgba(10,25,40,.55);
+    align-items:center;justify-content:center;
+    z-index:100;
+    padding:16px;
+  }
+  .modal-overlay.open{display:flex;}
+  .modal-box{
+    background:#fff;
+    border-radius:16px;
+    width:100%;max-width:560px;
+    box-shadow:0 20px 60px rgba(0,20,40,.3);
+    overflow:hidden;
+  }
+  .modal-header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:16px 20px;
+    background:var(--vnpt-blue-700);
+    color:#fff;
+  }
+  .modal-header h3{margin:0;font-size:15.5px;}
+  .modal-close{
+    background:none;border:none;color:#fff;font-size:20px;
+    cursor:pointer;line-height:1;opacity:.8;
+  }
+  .modal-close:hover{opacity:1;}
+  .modal-body{padding:20px;}
+  .modal-label{
+    display:block;font-size:12px;font-weight:700;color:var(--ink);
+    margin:0 0 6px;
+  }
+  .modal-input{
+    width:100%;
+    padding:10px 12px;
+    border:1px solid var(--line);
+    border-radius:9px;
+    font-size:13.5px;
+    margin-bottom:16px;
+    outline:none;
+    background:var(--vnpt-blue-100);
+  }
+  .modal-input:focus{border-color:var(--vnpt-blue-600);}
+  .modal-input-sm{
+    width:auto;
+    padding:6px 10px;
+    font-size:13px;
+  }
+  .login-error{
+    color:#c0392b;
+    font-size:12px;
+    margin:-8px 0 14px;
+    background:#fdecea;
+    border-radius:8px;
+    padding:8px 10px;
+  }
+  .modal-submit{
+    width:100%;
+    padding:11px;
+    border:none;
+    border-radius:9px;
+    background:var(--vnpt-blue-700);
+    color:#fff;
+    font-weight:700;
+    font-size:13.5px;
+    cursor:pointer;
+    transition:background .15s ease;
+  }
+  .modal-submit:hover{background:var(--vnpt-blue-900);}
+
+  .toast{
+    position:fixed;
+    top:50%;left:50%;
+    transform:translate(-50%,-50%) scale(.92);
+    background:var(--vnpt-blue-900);
+    color:#fff;
+    padding:18px 32px;
+    border-radius:14px;
+    font-size:16px;
+    font-weight:600;
+    text-align:center;
+    line-height:1.45;
+    box-shadow:0 24px 64px rgba(0,20,40,.45);
+    opacity:0;
+    pointer-events:none;
+    transition:all .25s ease;
+    z-index:310;
+    max-width:720px;
+    max-width:-webkit-calc(100vw - 48px);
+    max-width:min(720px, calc(100vw - 48px));
+  }
+  .toast.show{
+    opacity:1;
+    transform:translate(-50%,-50%) scale(1);
+  }
+  .toast.error{background:#a12f2f;}
+
+  .update-popup-backdrop{
+    position:fixed;
+    top:0;right:0;bottom:0;left:0;
+    background:rgba(8,25,45,.5);
+    z-index:295;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .25s ease;
+    -webkit-backdrop-filter:blur(2px);
+    backdrop-filter:blur(2px);
+  }
+  .update-popup-backdrop.show{
+    opacity:1;
+    pointer-events:auto;
+  }
+  .update-popup-overlay{
+    position:fixed;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%) scale(.9);
+    z-index:300;
+    display:flex;
+    align-items:flex-start;
+    gap:16px;
+    background:#fff;
+    border-radius:16px;
+    padding:24px 28px;
+    box-shadow:0 24px 64px rgba(0,20,40,.4);
+    border:2px solid var(--vnpt-blue-200);
+    width:calc(100vw - 48px);
+    max-width:560px;
+    width:-webkit-calc(100vw - 48px);
+    width:min(560px, calc(100vw - 48px));
+    opacity:0;
+    pointer-events:none;
+    transition:all .25s ease;
+  }
+  .update-popup-overlay.show{
+    transform:translate(-50%,-50%) scale(1);
+    opacity:1;
+    pointer-events:auto;
+  }
+  .update-popup-overlay.done{
+    border-color:#2e9e5b;
+  }
+  .update-popup-icon{
+    flex-shrink:0;
+    width:36px;height:36px;
+    display:flex;align-items:center;justify-content:center;
+    margin-top:2px;
+  }
+  .update-popup-spinner{
+    width:26px;height:26px;
+    border:4px solid var(--vnpt-blue-200);
+    border-top-color:var(--vnpt-blue-600);
+    border-radius:50%;
+    animation:updateSpin .8s linear infinite;
+  }
+  @keyframes updateSpin{ to{ transform:rotate(360deg); } }
+  .update-popup-check{
+    width:32px;height:32px;
+    border-radius:50%;
+    background:#2e9e5b;
+    color:#fff;
+    display:flex;align-items:center;justify-content:center;
+    font-size:18px;
+    font-weight:700;
+  }
+  .update-popup-text{
+    flex:1;
+    font-size:15.5px;
+    color:var(--ink);
+    line-height:1.5;
+    font-weight:600;
+  }
+  .update-popup-close{
+    flex-shrink:0;
+    background:none;border:none;
+    color:var(--muted);
+    font-size:22px;
+    line-height:1;
+    cursor:pointer;
+    padding:0 2px;
+    margin-top:0;
+  }
+  .update-popup-close:hover{color:var(--ink);}
+
+  .floating-hscroll{
+    position:fixed;
+    bottom:0;
+    left:0;
+    right:0;
+    height:14px;
+    overflow-x:auto;
+    overflow-y:hidden;
+    z-index:180;
+    background:rgba(240,246,251,.92);
+    border-top:1px solid var(--line);
+    box-shadow:0 -2px 8px rgba(0,20,40,.07);
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .2s ease;
+    -webkit-backdrop-filter:blur(4px);
+    backdrop-filter:blur(4px);
+  }
+  .floating-hscroll::-webkit-scrollbar{height:14px;}
+  .floating-hscroll::-webkit-scrollbar-track{background:transparent;}
+  .floating-hscroll::-webkit-scrollbar-thumb{
+    background:rgba(0,80,158,.28);
+    border-radius:99px;
+    border:3px solid rgba(240,246,251,.92);
+  }
+  .floating-hscroll::-webkit-scrollbar-thumb:hover{background:rgba(0,80,158,.5);}
+  .floating-hscroll.show{
+    opacity:1;
+    pointer-events:auto;
+  }
+  .floating-hscroll-inner{height:1px;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="logo-mark">VNPT</div>
+    <div>
+      <h1>Tra cứu dữ liệu &amp; bảng giá</h1>
+      <p id="subtitleText">Cẩm nang gói cước BRCĐ · MyTV · Mesh · Camera — 07/2026</p>
+    </div>
+  </div>
+  <div class="topbar-search">
+    <span class="topbar-search-icon" aria-hidden="true">🔍</span>
+    <input type="text" id="searchBox" class="topbar-search-input" placeholder="Tìm kiếm trong tất cả cột..." aria-label="Tìm kiếm toàn bộ dữ liệu">
+    <button class="clear-search" id="clearSearchBtn" aria-label="Xóa nội dung tìm kiếm">✕</button>
+  </div>
+  <div class="topbar-actions">
+    <input type="hidden" id="dataKeyInput" value="VNPT-2026-doiKhoaNay-XyZ789">
+    <div class="topbar-selects">
+      <select id="sourceSelect" class="modal-input modal-input-sm" aria-label="Chọn nguồn dữ liệu"></select>
+      <select id="sheetSelect" class="modal-input modal-input-sm" aria-label="Chọn sheet dữ liệu"></select>
+    </div>
+    <div class="topbar-admin-actions">
+      <button class="admin-btn" id="configBtn">⚙ Cấu hình</button>
+      <button class="admin-btn" id="manageReportsBtn">⚙ Quản lý nguồn dữ liệu</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="reportsOverlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Quản lý nguồn dữ liệu (Google Sheets)</h3>
+      <button class="modal-close" id="closeReportsBtn">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="reportsList" style="margin-bottom:16px;"></div>
+      <div class="login-error" id="reportsError" style="display:none;"></div>
+
+      <div style="border-top:1px solid var(--line);padding-top:16px;margin-top:4px;">
+        <label class="modal-label">Tên báo cáo</label>
+        <input type="text" id="reportNameInput" class="modal-input" placeholder="VD: Bảng giá Cá nhân, Bảng giá Doanh nghiệp...">
+        <label class="modal-label">URL Apps Script của nguồn dữ liệu</label>
+        <input type="text" id="reportUrlInput" class="modal-input" placeholder="https://script.google.com/macros/s/...../exec">
+        <button class="modal-submit" id="submitReportBtn">+ Thêm / Cập nhật nguồn dữ liệu</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="update-popup-backdrop" id="updatePopupBackdrop"></div>
+
+<div class="update-popup-overlay" id="updatePopupOverlay">
+  <div class="update-popup-icon" id="updatePopupIcon"><div class="update-popup-spinner"></div></div>
+  <div class="update-popup-text" id="updatePopupText">Có dữ liệu giá mới cập nhật ngày .../.../.....</div>
+  <button class="update-popup-close" id="updatePopupClose" aria-label="Đóng">&times;</button>
+</div>
+
+<div class="app-layout">
+  <aside class="panel dynamic-sticky">
+    <div class="filters">
+      <h2>Bộ lọc <button class="reset-btn" id="resetBtn">Xóa lọc</button></h2>
+
+      <details class="config-guide" id="configGuide">
+        <summary>📘 Hướng dẫn cấu hình bộ lọc (chỉ admin thấy)</summary>
+        <ul>
+          <li><span class="cg-tag">✕</span> cạnh mỗi bộ lọc: <b>đánh dấu ẩn/hiện</b> bộ lọc đó với người dùng thường. Bấm lại để bỏ đánh dấu.</li>
+          <li><span class="cg-tag">✕</span> trên tiêu đề mỗi cột (bảng kết quả): đánh dấu ẩn/hiện cột đó khỏi bảng kết quả.</li>
+          <li>
+            <span class="cg-tag">+</span> cạnh mỗi bộ lọc — tuỳ trạng thái đang chọn:
+            <ul>
+              <li><b>Không chọn giá trị nào</b> rồi bấm: bật chế độ <span class="cg-green"><b>Chọn đơn</b></span> (select-one) cho bộ lọc này — người dùng chỉ được chọn 1 giá trị tại 1 thời điểm.</li>
+              <li><b>Chọn ≥ 1 giá trị / group</b> rồi bấm: gộp các lựa chọn đã chọn thành <b>1 group mới</b> (sẽ hỏi tên group).</li>
+              <li><b>Chọn đúng 1 group</b> đã có rồi bấm: <b>đổi tên</b> group đó.</li>
+            </ul>
+          </li>
+          <li>
+            <span class="cg-tag">−</span> cạnh mỗi bộ lọc — tuỳ trạng thái:
+            <ul>
+              <li>Nếu bộ lọc đang ở chế độ <span class="cg-green"><b>Chọn đơn</b></span>: bấm <b>lần 1</b> sẽ cảnh báo, bấm <b>lần 2</b> mới huỷ chế độ chọn đơn.</li>
+              <li>Nếu đang chọn 1 hoặc nhiều group: <b>bỏ gộp</b> (xoá) các group đó, trả các giá trị về dạng lẻ ban đầu.</li>
+            </ul>
+          </li>
+          <li>Bộ lọc/ô có viền <span class="cg-green"><b>xanh lá</b></span> (chip, combobox, header) nghĩa là đang ở chế độ <b>Chọn đơn</b>.</li>
+          <li>Sau khi chỉnh sửa xong, nhớ bấm nút <b>"✓ Cập nhật"</b> ở góc trên để lưu lại cấu hình.</li>
+        </ul>
+      </details>
+
+      <div id="dynamicFiltersContainer"></div>
+    </div>
+  </aside>
+
+  <main class="panel results dynamic-sticky">
+    <div class="results-header">
+      <div>
+        <h2>Kết quả tra cứu <span class="result-count-inline" id="pageInfo">(0/0)</span></h2>
+        <div class="sub" id="resultSub">Hiển thị tất cả dữ liệu phù hợp với bộ lọc hiện tại</div>
+        <div class="last-updated" id="lastUpdatedBadge"></div>
+      </div>
+      <div class="pagination-controls">
+        <span>Tải</span>
+        <select id="pageSizeSelect">
+          <option value="10">10</option>
+          <option value="20" selected>20</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+        <span>dòng/lần</span>
+        <button class="refresh-btn" id="refreshDataBtn" title="Xoá cache và tải lại dữ liệu mới nhất từ nguồn" aria-label="Làm mới dữ liệu"><span aria-hidden="true">⟳</span></button>
+      </div>
+    </div>
+    <div class="uniform-note" id="uniformColumnsNote" style="display:none;"></div>
+    <div class="table-wrap">
+      <table>
+        <colgroup id="tableColgroup"></colgroup>
+        <thead id="tableHead">
+          <tr id="headerRow">
+            <th style="width:56px;text-align:center;cursor:default;background:var(--vnpt-blue-100);">#</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+      <div class="empty-state" id="emptyState" style="display:none;">
+        <div class="icon">🔍</div>
+        <div>Không tìm thấy dữ liệu phù hợp với bộ lọc đã chọn.</div>
+      </div>
+      <div class="infinite-status" id="infiniteStatus" style="display:none;"></div>
+      <div class="infinite-sentinel" id="infiniteSentinel"></div>
+    </div>
+    <footer class="note" id="footerNote">Nguồn: Cẩm nang gói cước BRCĐ MyTV Mesh Cam 07/2026 (VNPT).</footer>
+  </main>
+</div>
+
+<div id="floatingHScroll" class="floating-hscroll"><div id="floatingHScrollInner" class="floating-hscroll-inner"></div></div>
+<button class="scroll-top-btn" id="scrollTopBtn" aria-label="Lên đầu trang" title="Lên đầu trang">↑</button>
+
+<script>
+// Đã xóa log debug nền đen chữ xanh theo yêu cầu - iosLog giờ chỉ ghi console
+function iosLog(msg){ try{ console.log('[iOS] ' + msg); }catch(e){} }
+
+// ===== KIỂM TRA CHẾ ĐỘ ADMIN (tương thích iOS cũ không có URLSearchParams) =====
+var urlParams;
+try{
+  urlParams = new URLSearchParams(window.location.search);
+}catch(e){
+  // Fallback cho iOS < 10.3
+  urlParams = {
+    get: function(k){
+      try{
+        var m = new RegExp('[?&]' + k + '=([^&]*)').exec(window.location.search);
+        return m ? decodeURIComponent(m[1].replace(/\+/g,' ')) : null;
+      }catch(e2){ return null; }
+    }
+  };
+  iosLog('URLSearchParams not supported, using fallback');
+}
+const isAdminMode = urlParams.get('mode') === 'admin';
+if (isAdminMode) {
+  document.body.classList.add('admin-mode');
+}
+
+// ===== HIỂN THỊ LỖI CHUNG (tránh màn hình trắng / "Đang tải" mãi trên iOS) =====
+window.addEventListener('error', function(e){
+  var msg = '';
+  try{ msg = (e && e.error && e.error.message) || (e && e.message) || String(e); }catch(ex){ msg = String(e); }
+  iosLog('ERROR: ' + msg + (e && e.filename ? ' @ ' + e.filename + ':' + e.lineno : ''));
+  if (!e || !e.error) return;
+  if (e.error.__shown) return;
+  e.error.__shown = true;
+  try {
+    if (typeof showEmptyState === 'function') showEmptyState('Lỗi: ' + msg + ' (Mở Console/F12 để xem chi tiết)');
+    if (typeof showToast === 'function') showToast('Lỗi: ' + msg, true);
+  } catch (err) {}
+});
+window.addEventListener('unhandledrejection', function(e){
+  var msg = '';
+  try{ msg = (e && e.reason && e.reason.message) || String(e.reason || e); }catch(ex){ msg = String(e); }
+  iosLog('UNHANDLED REJECTION: ' + msg);
+  try {
+    if (typeof showEmptyState === 'function') showEmptyState('Lỗi tải dữ liệu: ' + msg);
+    if (typeof showToast === 'function') showToast('Lỗi: ' + msg, true);
+  } catch (err) {}
+});
+
+// ===== BIẾN TOÀN CỤC =====
+let PACKAGES = []; 
+let dynamicFilter = null; 
+let sortState = {};
+let sortOrder = [];
+let pageSize = 20;
+let visibleCount = 20;
+let SEARCH_INDEX = [];
+let infiniteObserver = null;
+let LOCKED_COLUMN_WIDTHS = {};
+let LOCKED_COLUMN_WIDTHS_KEY = '';
+
+let COLUMN_LABELS = {};
+let COLUMN_ORDER = [];
+let COLUMN_NUMBER_FORMAT = {};
+
+// ====================================================================
+// CẤU HÌNH BẢO LƯU DỮ LIỆU LOCALSTORAGE & AUTO UPDATE CHECK (DELAY 0S)
+// ====================================================================
+const CHECK_VERSION_DELAY_MS = 0;
+const CHECK_VERSION_INTERVAL_MS = 30 * 60 * 1000;
+let PENDING_HIDDEN_COLS = new Set();
+let PENDING_HIDDEN_FILTERS = new Set();
+let PENDING_GROUPED_FILTERS = {};
+let PENDING_ONE_SELECT_FILTERS = new Set();
+
+let CONFIG_MODE = false;
+const LS_REPORTS_LIST_KEY = 'vnpt_cache_list_reports';
+const getLsDataKey = (id) => `vnpt_cache_data_${id}`;
+
+// ===== LOCALSTORAGE AN TOÀN (iOS Safari có thể lỗi ở chế độ duyệt ẩn / đầy bộ nhớ) =====
+const safeStorage = {
+  get(key) { try { return window.localStorage.getItem(key); } catch (e) { return null; } },
+  set(key, value) { try { window.localStorage.setItem(key, value); return true; } catch (e) { return false; } },
+  remove(key) { try { window.localStorage.removeItem(key); } catch (e) {} }
+};
+
+function getLocalReportsCache() {
+  try {
+    const raw = safeStorage.get(LS_REPORTS_LIST_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+
+function setLocalReportsCache(data) {
+  try {
+    safeStorage.set(LS_REPORTS_LIST_KEY, JSON.stringify(data));
+  } catch(e) {}
+}
+
+function getLocalDataCache(reportId) {
+  try {
+    const raw = safeStorage.get(getLsDataKey(reportId));
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+
+function setLocalDataCache(reportId, data) {
+  try {
+    safeStorage.set(getLsDataKey(reportId), JSON.stringify(data));
+  } catch(e) {}
+}
+
+function parseReportHiddenConfig(report){
+  try{
+    const raw = report && report.hidden_config;
+    if(!raw) return { hiddenColumns: [], hiddenFilters: [], groupedFilters: [], oneSelectFilters: [] };
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const groupedFilters = Array.isArray(parsed.groupedFilters) ? parsed.groupedFilters : [];
+    const oneSelectFilters = Array.isArray(parsed.oneSelectFilters) ? parsed.oneSelectFilters : [];
+    return {
+      hiddenColumns: Array.isArray(parsed.hiddenColumns) ? parsed.hiddenColumns : [],
+      hiddenFilters: Array.isArray(parsed.hiddenFilters) ? parsed.hiddenFilters : [],
+      groupedFilters: groupedFilters
+        .map(g => ({
+          sheet: String(g && g.sheet || ''),
+          col: String(g && g.col || ''),
+          name: String(g && g.name || '').trim(),
+          members: Array.isArray(g && g.members)
+            ? [...new Set(g.members.map(v => String(v)).filter(v => v))]
+            : []
+        }))
+        .filter(g => g.sheet && g.col && g.name && g.members.length),
+      oneSelectFilters: oneSelectFilters
+        .map(o => ({
+          sheet: String(o && o.sheet || ''),
+          col: String(o && o.col || '')
+        }))
+        .filter(o => o.sheet && o.col)
+    };
+  }catch(e){
+    return { hiddenColumns: [], hiddenFilters: [], groupedFilters: [], oneSelectFilters: [] };
+  }
+}
+
+function cloneGroupedFiltersMap(map){
+  const cloned = {};
+  Object.keys(map || {}).forEach(col => {
+    const groups = Array.isArray(map[col]) ? map[col] : [];
+    cloned[col] = groups.map(g => ({
+      name: String(g.name || '').trim(),
+      members: [...new Set((Array.isArray(g.members) ? g.members : []).map(v => String(v)).filter(v => v))]
+    })).filter(g => g.name && g.members.length);
+  });
+  return cloned;
+}
+
+function getHiddenColsForCurrent(){
+  const report = getReportById(currentReportId);
+  if(!report) return [];
+  return parseReportHiddenConfig(report).hiddenColumns
+    .filter(h => h.sheet === CURRENT_SHEET_NAME)
+    .map(h => h.col);
+}
+function getHiddenFiltersForCurrent(){
+  const report = getReportById(currentReportId);
+  if(!report) return [];
+  return parseReportHiddenConfig(report).hiddenFilters
+    .filter(h => h.sheet === CURRENT_SHEET_NAME)
+    .map(h => h.col);
+}
+function getGroupedFiltersForCurrentMap(){
+  const report = getReportById(currentReportId);
+  if(!report) return {};
+  const map = {};
+  parseReportHiddenConfig(report).groupedFilters
+    .filter(g => g.sheet === CURRENT_SHEET_NAME)
+    .forEach(g => {
+      if(!map[g.col]) map[g.col] = [];
+      if(map[g.col].some(x => x.name === g.name)) return;
+      map[g.col].push({ name: g.name, members: [...g.members] });
+    });
+  return map;
+}
+function getOneSelectFiltersForCurrent(){
+  const report = getReportById(currentReportId);
+  if(!report) return [];
+  return parseReportHiddenConfig(report).oneSelectFilters
+    .filter(o => o.sheet === CURRENT_SHEET_NAME)
+    .map(o => o.col);
+}
+
+function removeOneSelectFilterForCurrent(colKey){
+  const report = getReportById(currentReportId);
+  if(!report) return;
+  const cfg = parseReportHiddenConfig(report);
+  cfg.oneSelectFilters = (Array.isArray(cfg.oneSelectFilters) ? cfg.oneSelectFilters : []).filter(o => {
+    return !(o.sheet === CURRENT_SHEET_NAME && o.col === colKey);
+  });
+  report.hidden_config = JSON.stringify(cfg);
+  setLocalReportsCache(REPORTS);
+}
+function isColHiddenConfirmed(key){ return getHiddenColsForCurrent().includes(key); }
+function isFilterHiddenConfirmed(key){ return getHiddenFiltersForCurrent().includes(key); }
+
+function toggleHiddenCol(key, event){
+  if(event) event.stopPropagation();
+  if(PENDING_HIDDEN_COLS.has(key)) PENDING_HIDDEN_COLS.delete(key);
+  else PENDING_HIDDEN_COLS.add(key);
+  render();
+}
+function toggleHiddenFilter(key, event){
+  if(event) event.stopPropagation();
+  if(PENDING_HIDDEN_FILTERS.has(key)) PENDING_HIDDEN_FILTERS.delete(key);
+  else PENDING_HIDDEN_FILTERS.add(key);
+  if(dynamicFilter) dynamicFilter.render();
+}
+
+async function applyHiddenConfigUpdate(){
+  const report = getReportById(currentReportId);
+  if(!report) throw new Error('Không tìm thấy nguồn dữ liệu hiện tại.');
+  const cfg = parseReportHiddenConfig(report);
+  cfg.hiddenColumns = cfg.hiddenColumns.filter(h => h.sheet !== CURRENT_SHEET_NAME);
+  PENDING_HIDDEN_COLS.forEach(col => cfg.hiddenColumns.push({ sheet: CURRENT_SHEET_NAME, col }));
+  cfg.hiddenFilters = cfg.hiddenFilters.filter(h => h.sheet !== CURRENT_SHEET_NAME);
+  PENDING_HIDDEN_FILTERS.forEach(col => cfg.hiddenFilters.push({ sheet: CURRENT_SHEET_NAME, col }));
+  cfg.groupedFilters = (Array.isArray(cfg.groupedFilters) ? cfg.groupedFilters : []).filter(g => g.sheet !== CURRENT_SHEET_NAME);
+  Object.keys(PENDING_GROUPED_FILTERS).forEach(col => {
+    const groups = Array.isArray(PENDING_GROUPED_FILTERS[col]) ? PENDING_GROUPED_FILTERS[col] : [];
+    groups.forEach(g => {
+      const name = String(g && g.name || '').trim();
+      const members = [...new Set((Array.isArray(g && g.members) ? g.members : []).map(v => String(v)).filter(v => v))];
+      if(!name || !members.length) return;
+      cfg.groupedFilters.push({ sheet: CURRENT_SHEET_NAME, col, name, members });
+    });
+  });
+  cfg.oneSelectFilters = (Array.isArray(cfg.oneSelectFilters) ? cfg.oneSelectFilters : []).filter(o => o.sheet !== CURRENT_SHEET_NAME);
+  PENDING_ONE_SELECT_FILTERS.forEach(col => cfg.oneSelectFilters.push({ sheet: CURRENT_SHEET_NAME, col }));
+  const hiddenConfigJson = JSON.stringify(cfg);
+  await configFetch('saveReport', {
+    id: report.id,
+    name: report.name,
+    sheet_url: report.sheet_url,
+    hidden_config: hiddenConfigJson,
+    version: report.version || 1
+  });
+  report.hidden_config = hiddenConfigJson;
+  setLocalReportsCache(REPORTS);
+}
+
+function escapeHtml(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function safeNormalize(str, form){
+  try{ return String(str).normalize(form); }catch(e){ return String(str); }
+}
+function safeToLocaleString(num, locale){
+  try{ return Number(num).toLocaleString(locale); }catch(e){
+    try{ return Number(num).toLocaleString(); }catch(e2){ return String(num); }
+  }
+}
+function safeToLocaleDateString(date, locale){
+  try{ return date.toLocaleDateString(locale); }catch(e){
+    try{ return date.toLocaleDateString(); }catch(e2){ return date.toISOString().slice(0,10).split('-').reverse().join('/'); }
+  }
+}
+function safeToLocaleTimeString(date, locale, opts){
+  try{ return date.toLocaleTimeString(locale, opts); }catch(e){
+    try{ return date.toLocaleTimeString(); }catch(e2){ return date.toTimeString().slice(0,5); }
+  }
+}
+function normalizeSearchText(input){
+  if (input === null || input === undefined) return '';
+  return safeNormalize(String(input).toLowerCase(), 'NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function compactSearchText(input){
+  return normalizeSearchText(input).replace(/[^a-z0-9]/g, '');
+}
+
+function buildSearchIndex(rows){
+  if (!Array.isArray(rows) || !rows.length) return [];
+
+  return rows.map(row => {
+    const fullParts = [];
+    const compactParts = [];
+
+    COLUMN_ORDER.forEach(key => {
+      const val = row[key];
+      if (isEmptyCellValue(val)) return;
+
+      const rawStr = String(val);
+      fullParts.push(rawStr);
+      compactParts.push(rawStr);
+
+      if (typeof val === 'number') {
+        const localized = safeToLocaleString(val,'vi-VN');
+        fullParts.push(localized);
+        compactParts.push(localized);
+
+        const fmt = COLUMN_NUMBER_FORMAT[key];
+        if (fmt) {
+          const byDetectedFormat = formatNumberWithFormat(val, fmt);
+          if (byDetectedFormat) {
+            fullParts.push(byDetectedFormat);
+            compactParts.push(byDetectedFormat);
+          }
+        }
+      }
+    });
+
+    return {
+      normal: normalizeSearchText(fullParts.join(' ')),
+      compact: compactSearchText(compactParts.join(' '))
+    };
+  });
+}
+
+function isEmptyCellValue(v){
+  return v === null || v === undefined || v === '';
+}
+
+// ===== LOGIC XỬ LÝ ĐỊNH DẠNG SỐ =====
+function parseLocalizedNumber(raw, thousandsSep, decimalSep) {
+  if (raw === null || raw === undefined) return null;
+  let s = String(raw).trim();
+  if (!s || !/^[\d.,]+$/.test(s)) return null;
+
+  if (thousandsSep) {
+    s = s.replace(new RegExp('\\' + thousandsSep, 'g'), '');
+  }
+
+  if (decimalSep) {
+    const lastDecimalIndex = s.lastIndexOf(decimalSep);
+    if (lastDecimalIndex !== -1) {
+      const left = s.slice(0, lastDecimalIndex).replace(new RegExp('\\' + decimalSep, 'g'), '');
+      const right = s.slice(lastDecimalIndex + 1).replace(new RegExp('\\' + decimalSep, 'g'), '');
+      s = left + (right ? '.' + right : '');
+    }
+  }
+
+  if (!/^\d+(\.\d+)?$/.test(s)) return null;
+  const num = Number(s);
+  return Number.isFinite(num) ? num : null;
+}
+
+function parseNumberSmart(raw) {
+  if (raw === null || raw === undefined) return null;
+  const s = String(raw).trim();
+  if (!s || !/^[\d.,]+$/.test(s)) return null;
+
+  const hasComma = s.includes(',');
+  const hasDot = s.includes('.');
+
+  if (hasComma && hasDot) {
+    const lastComma = s.lastIndexOf(',');
+    const lastDot = s.lastIndexOf('.');
+    const decimal = lastComma > lastDot ? ',' : '.';
+    const thousands = decimal === ',' ? '.' : ',';
+    return parseLocalizedNumber(s, thousands, decimal);
+  }
+
+  if (!hasComma && !hasDot) {
+    const num = Number(s);
+    return Number.isFinite(num) ? num : null;
+  }
+
+  const sep = hasComma ? ',' : '.';
+  const parts = s.split(sep);
+
+  // Nhiều dấu cùng loại và nhóm 3 chữ số phía sau -> khả năng cao là phân tách nghìn
+  if (parts.length > 2) {
+    const isThousandsGrouped = parts.slice(1).every(p => p.length === 3);
+    if (isThousandsGrouped) {
+      return parseLocalizedNumber(s, sep, null);
+    }
+    return parseLocalizedNumber(s, null, sep);
+  }
+
+  const digitsAfter = parts[1].length;
+  if (digitsAfter <= 2) {
+    return parseLocalizedNumber(s, null, sep);
+  }
+  if (digitsAfter === 3) {
+    return parseLocalizedNumber(s, sep, null);
+  }
+
+  const flattened = s.replace(new RegExp('\\' + sep, 'g'), '');
+  const num = Number(flattened);
+  return Number.isFinite(num) ? num : null;
+}
+
+function detectNumberFormat(values) {
+  const numericValues = values
+    .map(v => String(v).trim())
+    .filter(s => s && /^[\d,.]+$/.test(s));
+  
+  if (numericValues.length === 0) return null;
+
+  // Chấm điểm 2 kiểu locale phổ biến:
+  // vi: 1.234,56  | en: 1,234.56
+  let viScore = 0;
+  let enScore = 0;
+
+  numericValues.forEach(s => {
+    const hasComma = s.includes(',');
+    const hasDot = s.includes('.');
+
+    if (hasComma && hasDot) {
+      const lastComma = s.lastIndexOf(',');
+      const lastDot = s.lastIndexOf('.');
+      if (lastComma > lastDot) viScore += 3;
+      else enScore += 3;
+      return;
+    }
+
+    if (hasComma) {
+      const parts = s.split(',');
+      if (parts.length > 2) {
+        enScore += parts.slice(1).every(p => p.length === 3) ? 2 : 0.5;
+        return;
+      }
+      const digitsAfter = parts[1].length;
+      if (digitsAfter <= 2) viScore += 1.5;
+      else if (digitsAfter === 3) enScore += 1.5;
+      else viScore += 0.5;
+      return;
+    }
+
+    if (hasDot) {
+      const parts = s.split('.');
+      if (parts.length > 2) {
+        viScore += parts.slice(1).every(p => p.length === 3) ? 2 : 0.5;
+        return;
+      }
+      const digitsAfter = parts[1].length;
+      if (digitsAfter <= 2) enScore += 1.5;
+      else if (digitsAfter === 3) viScore += 1.5;
+      else enScore += 0.5;
+    }
+  });
+
+  if (viScore === 0 && enScore === 0) return null;
+  return viScore >= enScore
+    ? { thousands: '.', decimal: ',' }
+    : { thousands: ',', decimal: '.' };
+}
+
+function parseNumberWithFormat(str, format) {
+  if (!str || typeof str !== 'string') return null;
+  str = str.trim();
+  if (!str) return null;
+
+  if (format && format.thousands && format.decimal) {
+    const byColumnFormat = parseLocalizedNumber(str, format.thousands, format.decimal);
+    if (byColumnFormat !== null) return byColumnFormat;
+  }
+
+  return parseNumberSmart(str);
+}
+
+function formatNumberWithFormat(num, format) {
+  if (num === null || num === undefined || isNaN(num)) return null;
+  
+  const str = String(num);
+  const decimalParts = str.split('.');
+  const decimalPlaces = decimalParts.length > 1 ? decimalParts[1].length : 0;
+  
+  let formatted;
+  if (decimalPlaces === 0) {
+    formatted = Math.round(num).toString();
+  } else {
+    formatted = num.toFixed(Math.min(decimalPlaces, 2));
+  }
+  
+  if (format) {
+    const parts = formatted.split('.');
+    let intPart = parts[0];
+    const decimalPart = parts.length > 1 ? parts[1] : '';
+    
+    let result = '';
+    let count = 0;
+    for (let i = intPart.length - 1; i >= 0; i--) {
+      result = intPart[i] + result;
+      count++;
+      if (count % 3 === 0 && i > 0) {
+        result = format.thousands + result;
+      }
+    }
+    
+    if (decimalPart) {
+      result = result + format.decimal + decimalPart;
+    }
+    
+    return result;
+  }
+  
+  return formatted;
+}
+
+function formatDisplayValue(key, val) {
+  if (isEmptyCellValue(val)) return '<span class="price-dash">—</span>';
+  
+  if (typeof val === 'number') {
+    const format = COLUMN_NUMBER_FORMAT[key];
+    if (format) {
+      const formatted = formatNumberWithFormat(val, format);
+      if (formatted) return formatted;
+    }
+    return safeToLocaleString(val,'vi-VN');
+  }
+  
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (/^[\d,.]+$/.test(trimmed)) {
+      const format = detectNumberFormat([trimmed]);
+      if (format) {
+        const num = parseNumberWithFormat(trimmed, format);
+        if (num !== null && !isNaN(num)) {
+          const formatted = formatNumberWithFormat(num, format);
+          if (formatted) return formatted;
+        }
+      }
+    }
+  }
+  
+  return escapeHtml(val);
+}
+
+// ===== PARSE DỮ LIỆU TỪ GOOGLE SHEETS =====
+function parseRowsIntoPackages(rows){
+  if(!rows || rows.length < 2) return [];
+  const headerRow = rows[0];
+  const { colMap, labels } = resolveColumnKeys(headerRow);
+  COLUMN_LABELS = labels;
+  COLUMN_ORDER = colMap.slice();
+  COLUMN_NUMBER_FORMAT = {};
+
+  const rawData = [];
+  for(let i=1; i<rows.length; i++){
+    const row = rows[i];
+    if(!row || row.every(c => c === "" || c === null || c === undefined)) continue;
+    const obj = {};
+    colMap.forEach((key, idx)=>{
+      let val = row[idx];
+      if (val === null || val === undefined || val === '') {
+        obj[key] = "";
+      } else {
+        obj[key] = String(val).trim();
+      }
+    });
+    rawData.push(obj);
+  }
+
+  colMap.forEach(key => {
+    const values = rawData.map(row => row[key]).filter(v => v !== "" && v !== null && v !== undefined);
+    if (values.length === 0) return;
+    
+    const numericCandidates = values.filter(v => {
+      if (typeof v !== 'string') return false;
+      if (!/^[\d,.]+$/.test(v)) return false;
+      const numStr = v.replace(/,/g, '').replace(/\./g, '');
+      return numStr.length > 0 && /^\d+$/.test(numStr);
+    });
+    
+    if (numericCandidates.length > 0) {
+      const format = detectNumberFormat(numericCandidates);
+      // Luôn quy đổi các giá trị dạng số sang kiểu Number, kể cả khi cột
+      // không có dấu phân cách hàng nghìn (format === null). Trước đây bước
+      // này chỉ chạy khi phát hiện được format, khiến các cột số "trơn"
+      // (Tốc độ trong nước, Số lượng Mesh, Tốc độ quốc tế...) bị giữ nguyên
+      // dạng chuỗi, làm sort/slider/combobox/search không đồng bộ với nhau.
+      if (format) {
+        COLUMN_NUMBER_FORMAT[key] = format;
+      }
+      rawData.forEach(row => {
+        const val = row[key];
+        if (typeof val === 'string' && /^[\d,.]+$/.test(val)) {
+          const num = parseNumberWithFormat(val, format);
+          if (num !== null && !isNaN(num)) {
+            row[key] = num;
+          }
+        }
+      });
+    }
+  });
+
+  return rawData.filter(obj => {
+    return Object.values(obj).some(v => v !== "" && v !== null && v !== undefined);
+  });
+}
+
+function resolveColumnKeys(headerRow){
+  const usedKeys = new Set();
+  const labels = {};
+  let unidentifiedCount = 0;
+
+  const colMap = headerRow.map(rawHeader => {
+    const headerText = (rawHeader === null || rawHeader === undefined) ? '' : String(rawHeader).trim();
+    let slug = slugifyHeader(headerText);
+    let key = slug;
+    let label = headerText;
+
+    if (!key) {
+      unidentifiedCount++;
+      key = 'unidentified_' + unidentifiedCount;
+      label = 'Cột ' + unidentifiedCount;
+    }
+
+    let finalKey = key;
+    let n = 2;
+    while (usedKeys.has(finalKey)) {
+      finalKey = key + '_' + n;
+      n++;
+    }
+    usedKeys.add(finalKey);
+    labels[finalKey] = label;
+    return finalKey;
+  });
+
+  return { colMap, labels };
+}
+
+function slugifyHeader(header){
+  let s = String(header || '').trim();
+  if(!s) return '';
+  s = s.toLowerCase();
+  s = safeNormalize(s, 'NFD').replace(/[\u0300-\u036f]/g, '');
+  s = s.replace(/đ/g, 'd');
+  s = s.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  return s;
+}
+
+function formatDynamicValue(key, val) {
+  return formatDisplayValue(key, val);
+}
+
+// ===== GIỚI HẠN ĐỘ DÀI VALUE HIỂN THỊ TRONG BẢNG KẾT QUẢ =====
+// Hằng số: số ký tự tối đa hiển thị cho 1 value trong bảng kết quả tra cứu.
+// Value dài hơn sẽ bị cắt bớt khi hiển thị, nhưng hover (title) và copy vẫn trả về giá trị đầy đủ.
+const MAX_TABLE_CELL_VALUE_LENGTH = 100;
+
+function getCellPlainText(key, rawVal) {
+  if (isEmptyCellValue(rawVal)) return '';
+  if (typeof rawVal === 'string') {
+    const trimmed = rawVal.trim();
+    if (/^[\d,.]+$/.test(trimmed)) {
+      return formatDynamicValue(key, rawVal).replace(/<[^>]*>/g, '');
+    }
+    return rawVal;
+  }
+  if (typeof rawVal === 'number') {
+    return formatDynamicValue(key, rawVal).replace(/<[^>]*>/g, '');
+  }
+  return String(rawVal);
+}
+
+function renderTableCell(key, rawVal) {
+  const fullText = getCellPlainText(key, rawVal);
+  if (fullText.length <= MAX_TABLE_CELL_VALUE_LENGTH) {
+    return `<td>${formatDynamicValue(key, rawVal)}</td>`;
+  }
+  const truncatedText = fullText.slice(0, MAX_TABLE_CELL_VALUE_LENGTH) + '…';
+  const fullEscaped = escapeHtml(fullText);
+  return `<td class="truncated-cell" title="${fullEscaped}" data-full-value="${fullEscaped}">${escapeHtml(truncatedText)}</td>`;
+}
+
+// Khi copy trong ô bị cắt bớt (chọn đúng toàn bộ nội dung hiển thị của ô),
+// trả về clipboard giá trị đầy đủ (data-full-value) thay vì phần đã bị cắt.
+document.addEventListener('copy', function(e) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+  const range = sel.getRangeAt(0);
+  const node = range.commonAncestorContainer;
+  const el = node.nodeType === 1 ? node : node.parentElement;
+  const cell = el ? el.closest('td.truncated-cell') : null;
+  if (!cell) return;
+  if (sel.toString() !== cell.textContent) return;
+  const fullValue = cell.getAttribute('data-full-value');
+  if (fullValue === null) return;
+  e.clipboardData.setData('text/plain', fullValue);
+  e.preventDefault();
+});
+
+function getSortValue(row, key) {
+  let val = row[key];
+  if (isEmptyCellValue(val)) return null;
+  return typeof val === 'string' ? val.toLowerCase() : val;
+}
+
+function compareValues(a, b, key) {
+  const valA = getSortValue(a, key);
+  const valB = getSortValue(b, key);
+  
+  // 1. Xử lý giá trị rỗng: Coi rỗng (-) là giá trị NHỎ NHẤT
+  if (valA === null && valB === null) return 0;
+  if (valA === null) return -1; // valA rỗng -> đẩy lên đầu (nhỏ nhất)
+  if (valB === null) return 1;  // valB rỗng -> đẩy lên đầu (nhỏ nhất)
+
+  // 2. Hàm hỗ trợ bóc tách số từ chuỗi (Vd: "500ULM(*)" -> 500)
+  const parseNumeric = (val) => {
+    if (typeof val === 'number') return val;
+    if (typeof val === 'string') {
+      // Loại bỏ dấu phẩy (nếu có) và lấy phần số ở đầu chuỗi
+      const match = val.replace(/,/g, '').match(/^-?\d+(\.\d+)?/);
+      if (match) return parseFloat(match[0]);
+    }
+    return NaN;
+  };
+
+  const numA = parseNumeric(valA);
+  const numB = parseNumeric(valB);
+
+  const isNumA = !isNaN(numA);
+  const isNumB = !isNaN(numB);
+
+  // 3. Nếu cả 2 đều có chứa số, thực hiện so sánh theo Toán học
+  if (isNumA && isNumB) {
+    if (numA !== numB) return numA - numB;
+    // Nếu phần số bằng nhau (ví dụ: 500 và "500ULM(*)"), so sánh tiếp bằng chuỗi
+    return String(valA).localeCompare(String(valB));
+  }
+
+  // 4. Fallback mặc định: so sánh theo Alphabet nếu không phải số
+  return String(valA).localeCompare(String(valB));
+}
+
+function sortPackages(list) {
+  if (sortOrder.length === 0) return [...list];
+  return [...list].sort((a, b) => {
+    for (const key of sortOrder) {
+      const direction = sortState[key];
+      if (!direction) continue;
+      const result = compareValues(a, b, key);
+      if (result !== 0) return direction === 'asc' ? result : -result;
+    }
+    return 0;
+  });
+}
+
+function handleSort(key, event) {
+  const isMulti = event.ctrlKey || event.metaKey || event.shiftKey;
+  if (isMulti) {
+    if (sortOrder.includes(key)) {
+      if (sortState[key] === 'asc') sortState[key] = 'desc';
+      else if (sortState[key] === 'desc') {
+        delete sortState[key];
+        sortOrder = sortOrder.filter(k => k !== key);
+      }
+    } else {
+      sortState[key] = 'asc';
+      sortOrder.push(key);
+    }
+  } else {
+    if (sortOrder.length === 1 && sortOrder[0] === key) {
+      if (sortState[key] === 'asc') sortState[key] = 'desc';
+      else { delete sortState[key]; sortOrder = []; }
+    } else {
+      sortState = {}; sortOrder = [];
+      sortState[key] = 'asc'; sortOrder.push(key);
+    }
+  }
+  visibleCount = pageSize;
+  render();
+}
+
+function classifyColumns(data) {
+  if (!data || data.length === 0) return { varyingCols: [], uniformNotes: [] };
+  const varyingCols = [];
+  const uniformNotes = [];
+
+  COLUMN_ORDER.forEach(key => {
+    if (!(key in data[0])) return;
+    const values = data.map(row => row[key]);
+    const hasAnyValue = values.some(v => !isEmptyCellValue(v));
+    if (!hasAnyValue) return;
+
+    const allSameNonEmpty = data.length > 1 &&
+      values.every(v => !isEmptyCellValue(v)) &&
+      new Set(values.map(v => String(v))).size === 1;
+
+    if (allSameNonEmpty) uniformNotes.push({ key, value: values[0] });
+    else varyingCols.push(key);
+  });
+  return { varyingCols, uniformNotes };
+}
+
+function renderUniformNote(uniformNotes) {
+  const el = document.getElementById('uniformColumnsNote');
+  if (!el) return;
+  if (!uniformNotes || !uniformNotes.length) {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+  const items = uniformNotes.map(n =>
+    `<span class="uniform-note-item"><b>${escapeHtml(COLUMN_LABELS[n.key] || n.key)}:</b> ${formatDynamicValue(n.key, n.value)}</span>`
+  ).join('');
+  el.innerHTML = `<span class="uniform-note-label">Áp dụng cho toàn bộ kết quả:</span> ${items}`;
+  el.style.display = 'flex';
+}
+
+function getDisplayCols(varyingCols){
+  if (CONFIG_MODE) return varyingCols;
+  return varyingCols.filter(key => !isColHiddenConfirmed(key));
+}
+
+function getMeasureCanvasContext() {
+  if (!getMeasureCanvasContext.canvas) {
+    getMeasureCanvasContext.canvas = document.createElement('canvas');
+  }
+  const ctx = getMeasureCanvasContext.canvas.getContext('2d');
+  const table = document.querySelector('.table-wrap table');
+  const style = table ? getComputedStyle(table) : null;
+  const fontSize = style ? style.fontSize : '13px';
+  const fontFamily = style ? style.fontFamily : 'Segoe UI, Arial, sans-serif';
+  ctx.font = `${fontSize} ${fontFamily}`;
+  return ctx;
+}
+
+function normalizeCellTextForMeasure(htmlOrText) {
+  return String(htmlOrText == null ? '' : htmlOrText)
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildLockedColumnWidths(displayCols) {
+  if (!Array.isArray(displayCols) || !displayCols.length || !PACKAGES.length) {
+    LOCKED_COLUMN_WIDTHS = {};
+    LOCKED_COLUMN_WIDTHS_KEY = '';
+    return;
+  }
+
+  const cacheKey = [
+    String(currentReportId || ''),
+    String(CURRENT_SHEET_NAME || ''),
+    String(PACKAGES.length),
+    displayCols.join('|')
+  ].join('::');
+
+  if (LOCKED_COLUMN_WIDTHS_KEY === cacheKey && Object.keys(LOCKED_COLUMN_WIDTHS).length) {
+    return;
+  }
+
+  const ctx = getMeasureCanvasContext();
+  const measured = {};
+
+  displayCols.forEach(key => {
+    const headerText = String(COLUMN_LABELS[key] || key);
+    // Header padding + sort icon + breathing room.
+    let maxPx = Math.ceil(ctx.measureText(headerText).width) + 56;
+
+    for (let i = 0; i < PACKAGES.length; i++) {
+      const row = PACKAGES[i];
+      const renderedText = normalizeCellTextForMeasure(formatDynamicValue(key, row[key])) || '-';
+      const px = Math.ceil(ctx.measureText(renderedText).width) + 30;
+      if (px > maxPx) maxPx = px;
+    }
+
+    measured[key] = Math.min(520, Math.max(96, maxPx));
+  });
+
+  LOCKED_COLUMN_WIDTHS = measured;
+  LOCKED_COLUMN_WIDTHS_KEY = cacheKey;
+}
+
+function renderColgroup(displayCols) {
+  const colgroup = document.getElementById('tableColgroup');
+  if (!colgroup) return;
+
+  let html = '<col style="width:56px;">';
+  displayCols.forEach(key => {
+    const px = LOCKED_COLUMN_WIDTHS[key] || 140;
+    html += `<col style="width:${px}px;">`;
+  });
+  colgroup.innerHTML = html;
+}
+
+function renderHeaders(displayCols) {
+  if (!PACKAGES.length) {
+    document.getElementById('headerRow').innerHTML = '<th style="width:56px;text-align:center;cursor:default;background:var(--vnpt-blue-100);">#</th>';
+    return;
+  }
+  let html = `<th style="width:56px;text-align:center;cursor:default;background:var(--vnpt-blue-100);">#</th>`;
+  displayCols.forEach(key => {
+    const label = COLUMN_LABELS[key] || key;
+    const dir = sortState[key];
+    const sortText = dir === 'asc' ? '↑' : (dir === 'desc' ? '↓' : '↕');
+    const sortInd = dir ? 'active' : '';
+    const isMarked = CONFIG_MODE && PENDING_HIDDEN_COLS.has(key);
+    
+    html += `<th data-sort-key="${key}" onclick="handleSort('${key}', event)" class="${isMarked ? 'col-marked-hidden' : ''}">
+      ${escapeHtml(label)}
+      <span class="sort-indicator ${sortInd}">${sortText}</span>
+      <span class="col-x-btn ${isMarked ? 'marked' : ''}" title="Đánh dấu ẩn cột này" onclick="toggleHiddenCol('${key}', event)">✕</span>
+    </th>`;
+  });
+  document.getElementById('headerRow').innerHTML = html;
+}
+
+function updateInfiniteStatus(shown, total) {
+  const pageInfo = document.getElementById('pageInfo');
+  if (pageInfo) pageInfo.textContent = `(${shown}/${total})`;
+
+  const statusEl = document.getElementById('infiniteStatus');
+  if (!statusEl) return;
+  statusEl.classList.remove('clickable');
+  statusEl.removeAttribute('role');
+  statusEl.removeAttribute('tabindex');
+
+  if (total === 0) {
+    statusEl.style.display = 'none';
+    statusEl.textContent = '';
+    return;
+  }
+
+  if (shown < total) {
+    statusEl.style.display = 'block';
+    statusEl.textContent = `Click để tải thêm (${shown}/${total})`;
+    statusEl.classList.add('clickable');
+    statusEl.setAttribute('role', 'button');
+    statusEl.setAttribute('tabindex', '0');
+    return;
+  }
+
+  statusEl.style.display = 'block';
+  statusEl.textContent = `Đã hiển thị toàn bộ ${total} dòng`;
+}
+
+function loadMoreRows() {
+  const total = sortPackages(filterPackages()).length;
+  if (visibleCount >= total) return;
+  visibleCount = Math.min(visibleCount + pageSize, total);
+  render();
+}
+
+function setupInfiniteScroll() {
+  if (infiniteObserver) {
+    infiniteObserver.disconnect();
+    infiniteObserver = null;
+  }
+
+  const sentinel = document.getElementById('infiniteSentinel');
+  if (sentinel && typeof IntersectionObserver !== 'undefined') {
+    infiniteObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        loadMoreRows();
+      });
+    }, {
+      root: null,
+      rootMargin: '0px 0px 220px 0px',
+      threshold: 0
+    });
+
+    infiniteObserver.observe(sentinel);
+  }
+
+  const statusEl = document.getElementById('infiniteStatus');
+  if (statusEl && !statusEl.dataset.clickBound) {
+    statusEl.addEventListener('click', () => {
+      loadMoreRows();
+    });
+    statusEl.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      loadMoreRows();
+    });
+    statusEl.dataset.clickBound = '1';
+  }
+}
+
+const searchBox = document.getElementById('searchBox');
+const clearSearchBtn = document.getElementById('clearSearchBtn');
+
+function syncClearSearchButtons(value) {
+  clearSearchBtn.classList.toggle('visible', String(value || '').trim().length > 0);
+}
+
+searchBox.addEventListener('input', function() {
+  const val = this.value.trim();
+  syncClearSearchButtons(this.value);
+  state.search = val;
+  visibleCount = pageSize;
+  render();
+});
+
+clearSearchBtn.addEventListener('click', function() {
+  searchBox.value = '';
+  syncClearSearchButtons('');
+  state.search = '';
+  visibleCount = pageSize;
+  render();
+  searchBox.focus();
+});
+
+const refreshDataBtn = document.getElementById('refreshDataBtn');
+refreshDataBtn.addEventListener('click', async () => {
+  if (!currentReportId) return;
+  refreshDataBtn.disabled = true;
+  refreshDataBtn.classList.add('is-loading');
+  try {
+    safeStorage.remove(getLsDataKey(currentReportId));
+    await selectReport(currentReportId, { silent: true, forceRemote: true, sheetName: CURRENT_SHEET_NAME });
+    showToast('Đã xoá cache và tải dữ liệu mới nhất thành công!');
+  } catch (e) {
+    showToast('Làm mới dữ liệu thất bại: ' + (e.message || e), true);
+  } finally {
+    refreshDataBtn.classList.remove('is-loading');
+    refreshDataBtn.disabled = false;
+  }
+});
+
+const scrollTopBtn = document.getElementById('scrollTopBtn');
+const topbarFloatingAnchor = document.querySelector('.topbar');
+
+function isTopbarHiddenForFloatingActions() {
+  if (!topbarFloatingAnchor) return window.scrollY > 0;
+
+  const styles = window.getComputedStyle(topbarFloatingAnchor);
+  if (
+    styles.display === 'none' ||
+    styles.visibility === 'hidden' ||
+    parseFloat(styles.opacity || '1') === 0
+  ) {
+    return true;
+  }
+
+  const rect = topbarFloatingAnchor.getBoundingClientRect();
+  if (rect.bottom <= 0 || rect.top >= window.innerHeight) {
+    return true;
+  }
+
+  // Topbar is still visible inside viewport.
+  return false;
+}
+
+function updateFloatingActionVisibility() {
+  const shouldShowFloatingActions = isTopbarHiddenForFloatingActions();
+  if (scrollTopBtn) {
+    scrollTopBtn.classList.toggle('show', shouldShowFloatingActions);
+  }
+}
+
+window.addEventListener('scroll', updateFloatingActionVisibility, { passive: true });
+updateFloatingActionVisibility();
+
+if (scrollTopBtn) {
+  scrollTopBtn.addEventListener('click', () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setTimeout(() => searchBox && searchBox.focus(), 400);
+  });
+}
+
+const configBtn = document.getElementById('configBtn');
+configBtn.addEventListener('click', async () => {
+  if (!CONFIG_MODE) {
+    CONFIG_MODE = true;
+    PENDING_HIDDEN_COLS = new Set(getHiddenColsForCurrent());
+    PENDING_HIDDEN_FILTERS = new Set(getHiddenFiltersForCurrent());
+    PENDING_GROUPED_FILTERS = cloneGroupedFiltersMap(getGroupedFiltersForCurrentMap());
+    PENDING_ONE_SELECT_FILTERS = new Set(getOneSelectFiltersForCurrent());
+    document.body.classList.add('config-mode');
+    configBtn.textContent = '✓ Cập nhật';
+    configBtn.classList.add('active-config');
+    render();
+    if (dynamicFilter) dynamicFilter.render();
+    return;
+  }
+
+  configBtn.disabled = true;
+  const originalText = configBtn.textContent;
+  configBtn.textContent = 'Đang lưu...';
+  try{
+    await applyHiddenConfigUpdate();
+    CONFIG_MODE = false;
+    document.body.classList.remove('config-mode');
+    PENDING_GROUPED_FILTERS = cloneGroupedFiltersMap(getGroupedFiltersForCurrentMap());
+    PENDING_ONE_SELECT_FILTERS = new Set(getOneSelectFiltersForCurrent());
+    configBtn.textContent = '⚙ Cấu hình';
+    configBtn.classList.remove('active-config');
+    showToast('Đã lưu cấu hình ẩn cột / ẩn bộ lọc vào nguồn dữ liệu.');
+    render();
+    if (dynamicFilter) dynamicFilter.render();
+  }catch(err){
+    showToast(err.message || 'Lưu cấu hình thất bại.', true);
+    configBtn.textContent = originalText;
+  }finally{
+    configBtn.disabled = false;
+  }
+});
+
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  state.search = "";
+  sortState = {};
+  sortOrder = [];
+  visibleCount = pageSize;
+  searchBox.value = "";
+  syncClearSearchButtons('');
+  if (dynamicFilter) dynamicFilter.resetFilters();
+  render();
+});
+
+document.getElementById('pageSizeSelect').addEventListener('change', (e) => {
+  pageSize = parseInt(e.target.value);
+  visibleCount = pageSize;
+  render();
+});
+
+function filterPackages(){
+  const normalizedTerm = normalizeSearchText(state.search || '');
+  const compactTerm = compactSearchText(state.search || '');
+
+  return PACKAGES.filter((p, rowIndex) => {
+    if(state.search) {
+      const searchRow = SEARCH_INDEX[rowIndex] || { normal: '', compact: '' };
+      const matchNormal = normalizedTerm ? searchRow.normal.includes(normalizedTerm) : false;
+      const matchCompact = compactTerm ? searchRow.compact.includes(compactTerm) : false;
+      const match = matchNormal || matchCompact;
+      if (!match) return false;
+    }
+
+    if (dynamicFilter && dynamicFilter.filterState) {
+      for (const key in dynamicFilter.filterState) {
+        const condition = dynamicFilter.filterState[key];
+        if (condition.selected.size === 0) continue;
+        
+        let rawVal = p[key];
+        let val = isEmptyCellValue(rawVal) ? "Blank" : String(rawVal);
+
+        if (!dynamicFilter.matchesCondition(key, val, condition)) return false;
+      }
+    }
+    return true;
+  });
+}
+
+function render() {
+  const filtered = filterPackages();
+  const sorted = sortPackages(filtered);
+  const total = sorted.length;
+  const shown = Math.min(visibleCount, total);
+  const visibleRows = sorted.slice(0, shown);
+
+  const { varyingCols, uniformNotes } = classifyColumns(PACKAGES);
+  const displayCols = getDisplayCols(varyingCols);
+  buildLockedColumnWidths(displayCols);
+  renderColgroup(displayCols);
+  renderHeaders(displayCols);
+  renderUniformNote(uniformNotes);
+  updateInfiniteStatus(shown, total);
+
+  const tbody = document.getElementById('resultsBody');
+  const empty = document.getElementById('emptyState');
+  const table = document.querySelector('.table-wrap table');
+
+  if (total === 0) {
+    tbody.innerHTML = "";
+    empty.style.display = "block";
+    table.style.display = 'none';
+    if (window.updateFloatingHScroll) window.updateFloatingHScroll();
+    return;
+  }
+  
+  empty.style.display = "none";
+  table.style.display = 'table';
+
+  tbody.innerHTML = visibleRows.map((p, idx) => {
+    const rowNum = idx + 1;
+    let cells = displayCols.map(key => renderTableCell(key, p[key])).join('');
+    return `<tr><td class="row-number">${rowNum}</td>${cells}</tr>`;
+  }).join('');
+  if (window.updateFloatingHScroll) requestAnimationFrame(window.updateFloatingHScroll);
+}
+
+const state = { search: "" };
+
+const CONFIG_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyYNyjmgbbX0fVSs6ogAXLaLa_51YAbNbM2xehyMcijO33mxVAZr0gTXsu13Rb-mbVo/exec';
+const SECRET_KEY = 'VNPT-2026-doiKhoaNay-XyZ789'; 
+const ADMIN_KEY  = 'VNPT-2026-doiKhoaAdmin-QwE456'; 
+const LAST_REPORT_KEY = 'vnpt_banggia_last_report_id';
+const GS_FETCH_TIMEOUT_MS = 6000; 
+const GS_FETCH_MAX_RETRIES = 5;   
+const GS_FETCH_RETRY_DELAY_MS = 2000; 
+
+const toastEl = document.getElementById('toast');
+function showToast(msg, isError){
+  toastEl.textContent = msg;
+  toastEl.classList.remove('error');
+  if(isError) toastEl.classList.add('error');
+  toastEl.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(()=> toastEl.classList.remove('show'), 3200);
+}
+
+// ===== POPUP THÔNG BÁO CÓ DỮ LIỆU GIÁ MỚI =====
+const updatePopupOverlay = document.getElementById('updatePopupOverlay');
+const updatePopupBackdrop = document.getElementById('updatePopupBackdrop');
+const updatePopupIcon = document.getElementById('updatePopupIcon');
+const updatePopupText = document.getElementById('updatePopupText');
+const updatePopupClose = document.getElementById('updatePopupClose');
+
+function formatUpdateDate(value){
+  if(!value) return safeToLocaleDateString(new Date(),'vi-VN');
+  const d = new Date(value);
+  if(isNaN(d.getTime())) return String(value);
+  return safeToLocaleDateString(d,'vi-VN');
+}
+
+function hideUpdatePopup(){
+  if(!updatePopupOverlay) return;
+  clearTimeout(hideUpdatePopup._t);
+  updatePopupOverlay.classList.remove('show');
+  if(updatePopupBackdrop) updatePopupBackdrop.classList.remove('show');
+}
+
+function showUpdateFoundPopup(dateStr){
+  if(!updatePopupOverlay) return;
+  clearTimeout(hideUpdatePopup._t);
+  updatePopupOverlay.classList.remove('done');
+  updatePopupIcon.innerHTML = '<div class="update-popup-spinner"></div>';
+  updatePopupText.textContent = 'Có dữ liệu giá mới, cập nhật ngày ' + dateStr + '. Đang tải dữ liệu mới...';
+  updatePopupOverlay.classList.add('show');
+  if(updatePopupBackdrop) updatePopupBackdrop.classList.add('show');
+}
+
+function showUpdateDonePopup(){
+  if(!updatePopupOverlay) return;
+  updatePopupOverlay.classList.add('done');
+  updatePopupIcon.innerHTML = '<div class="update-popup-check">&#10003;</div>';
+  updatePopupText.textContent = 'Đã cập nhật xong.';
+  clearTimeout(hideUpdatePopup._t);
+  hideUpdatePopup._t = setTimeout(hideUpdatePopup, 3500);
+}
+
+if(updatePopupClose){
+  updatePopupClose.addEventListener('click', hideUpdatePopup);
+}
+if(updatePopupBackdrop){
+  updatePopupBackdrop.addEventListener('click', hideUpdatePopup);
+}
+
+async function gsFetch(scriptUrl, action, key, params, _attempt){
+  params = params || {};
+  const attempt = _attempt || 1;
+
+  var body;
+  try{
+    body = new URLSearchParams();
+    body.set('action', action);
+    body.set('key', key);
+    Object.keys(params).forEach(function(k) {
+      if(params[k] !== undefined && params[k] !== null) body.set(k, params[k]);
+    });
+  }catch(e){
+    // Fallback cho iOS cũ không hỗ trợ URLSearchParams
+    iosLog('URLSearchParams fallback: ' + e.message);
+    var parts = [];
+    parts.push(encodeURIComponent('action') + '=' + encodeURIComponent(action));
+    parts.push(encodeURIComponent('key') + '=' + encodeURIComponent(key));
+    Object.keys(params).forEach(function(k){
+      if(params[k] !== undefined && params[k] !== null) parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(String(params[k])));
+    });
+    body = parts.join('&');
+  }
+
+  var hasAbortController = (typeof AbortController !== 'undefined');
+  var controller = null;
+  var timer = null;
+  if(hasAbortController){
+    try{
+      controller = new AbortController();
+      timer = setTimeout(function(){ try{ controller.abort(); }catch(e){} }, GS_FETCH_TIMEOUT_MS);
+    }catch(e){
+      iosLog('AbortController init failed: ' + e.message);
+      hasAbortController = false;
+      controller = null;
+      timer = null;
+    }
+  }else{
+    iosLog('AbortController not supported - using no timeout');
+  }
+
+  try {
+    var fetchOpts = {
+      method: 'POST',
+      body: body
+    };
+    // cache: no-store gây lỗi trên một số iOS cũ, chỉ thêm khi hỗ trợ
+    try{ fetchOpts.cache = 'no-store'; }catch(e){}
+    if(controller) fetchOpts.signal = controller.signal;
+    // Thêm header rõ ràng cho iOS
+    if(typeof body === 'string'){
+      fetchOpts.headers = { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' };
+    }
+
+    iosLog('Fetching ' + action + ' (attempt ' + attempt + ') -> ' + scriptUrl.substring(0,60) + '...');
+    var res;
+    if(hasAbortController){
+      res = await fetch(scriptUrl, fetchOpts);
+    }else{
+      // Fallback timeout bằng Promise.race cho iOS cũ
+      var fetchPromise = fetch(scriptUrl, fetchOpts);
+      var timeoutPromise = new Promise(function(_, reject){
+        setTimeout(function(){ reject(new DOMException('Timeout','AbortError')); }, GS_FETCH_TIMEOUT_MS);
+      });
+      res = await Promise.race([fetchPromise, timeoutPromise]);
+    }
+    if(timer) clearTimeout(timer);
+    iosLog('Fetch OK: HTTP ' + res.status + ' for ' + action);
+    if(!res.ok) throw new Error('Lỗi mạng: HTTP ' + res.status);
+    var json = await res.json();
+    if(json.status !== 'success') throw new Error(json.message || 'Lỗi không xác định từ API.');
+    return json;
+  } catch(err){
+    if(timer) clearTimeout(timer);
+    iosLog('Fetch ERROR (' + action + ' attempt ' + attempt + '): ' + (err && err.message ? err.message : String(err)) + ' [' + (err && err.name ? err.name : 'unknown') + ']');
+    var isTimeout = !!(err && (err.name === 'AbortError' || err.name === 'TimeoutError'));
+    var isNetworkError = !isTimeout && (err instanceof TypeError);
+    // iOS Safari có thể báo lỗi dạng string "Load failed" hoặc "cancelled"
+    if(!isTimeout && !isNetworkError && err && err.message){
+      var m = String(err.message).toLowerCase();
+      if(m.indexOf('load failed') !== -1 || m.indexOf('network') !== -1 || m.indexOf('cancelled') !== -1 || m.indexOf('failed to fetch') !== -1){
+        isNetworkError = true;
+      }
+    }
+    if((isTimeout || isNetworkError) && attempt <= GS_FETCH_MAX_RETRIES){
+      var delay = GS_FETCH_RETRY_DELAY_MS * attempt;
+      iosLog('Retrying ' + action + ' in ' + delay + 'ms...');
+      await new Promise(function(r){ setTimeout(r, delay); });
+      return gsFetch(scriptUrl, action, key, params, attempt + 1);
+    }
+    if(isTimeout) throw new Error('Máy chủ phản hồi quá lâu (quá ' + (GS_FETCH_TIMEOUT_MS/1000) + 's), vui lòng thử lại.');
+    if(isNetworkError) throw new Error('Không kết nối được máy chủ (vui lòng kiểm tra mạng), thử lại.');
+    throw err;
+  }
+}
+
+async function configFetch(action, params){
+  params = Object.assign({}, params);
+  if(action === 'saveReport' || action === 'deleteReport') params.admin_key = ADMIN_KEY;
+  return gsFetch(CONFIG_SCRIPT_URL, action, SECRET_KEY, params);
+}
+
+const HARDCODED_SECRET_KEY = 'VNPT-2026-doiKhoaNay-XyZ789';
+const dataKeyInput = document.getElementById('dataKeyInput');
+if(dataKeyInput){
+  dataKeyInput.type = 'hidden';
+  dataKeyInput.value = HARDCODED_SECRET_KEY;
+}
+
+async function dataFetch(reportUrl){
+  return await gsFetch(reportUrl, 'getData', HARDCODED_SECRET_KEY, {});
+}
+
+function getReportById(reportId){ return REPORTS.find(r => String(r.id) === String(reportId)); }
+function getReportSheets(report){ return Array.isArray(report && report.sheets) ? report.sheets : []; }
+
+function renderSourceMenu(){
+  const select = document.getElementById('sourceSelect');
+  if(!select) return;
+  select.style.display = REPORTS.length ? 'inline-block' : 'none';
+  select.innerHTML = REPORTS.map(r =>
+    '<option value="' + escapeHtml(String(r.id)) + '">' + escapeHtml(String(r.name || 'Không tên')) + '</option>'
+  ).join('');
+
+  const remembered = safeStorage.get(LAST_REPORT_KEY);
+  const selectedId = remembered && REPORTS.some(r => String(r.id) === String(remembered)) ? remembered : (REPORTS[0] ? REPORTS[0].id : '');
+
+  if(selectedId) select.value = String(selectedId);
+  select.onchange = async function(){ await selectReport(select.value, {silent:false}); };
+}
+
+function renderSheetMenuForReport(report){
+  const select = document.getElementById('sheetSelect');
+  if(!select) return;
+
+  const sheets = getReportSheets(report);
+  if(!sheets.length){
+    select.innerHTML = ''; select.style.display = 'none'; return;
+  }
+
+  select.innerHTML = sheets.map((s, i) =>
+    '<option value="' + escapeHtml(String(s.name)) + '">' + escapeHtml(String(s.name || ('Sheet ' + (i + 1)))) + '</option>'
+  ).join('');
+
+  const rememberedKey = 'vnpt_sheet_' + String(report.id);
+  const remembered = safeStorage.get(rememberedKey);
+  const selected = remembered && sheets.some(s => String(s.name) === String(remembered)) ? remembered : String(sheets[0].name);
+
+  select.value = selected;
+  select.style.display = sheets.length > 1 ? 'inline-block' : 'none';
+
+  select.onchange = async function(){
+    try{
+      const packages = loadSelectedSheet(report, select.value);
+      applyPackages(packages);
+      showToast('Đã tải "' + report.name + ' → ' + select.value + '".');
+    }catch(err){
+      showEmptyState('Không tải được sheet: ' + (err.message || err));
+      showToast(err.message || 'Không tải được sheet.', true);
+    }
+  };
+}
+
+function loadSelectedSheet(report, sheetName){
+  const sheets = getReportSheets(report);
+  const sheet = sheets.find(s => String(s.name) === String(sheetName));
+  if(!sheet) throw new Error('Không tìm thấy sheet "' + sheetName + '".');
+
+  const rows = Array.isArray(sheet.rows) ? sheet.rows : [];
+  const packages = parseRowsIntoPackages(rows);
+
+  if(!packages.length) throw new Error('Sheet "' + sheet.name + '" không có dữ liệu.');
+
+  CURRENT_SHEET_NAME = String(sheet.name);
+  safeStorage.set('vnpt_sheet_' + String(report.id), CURRENT_SHEET_NAME);
+  return packages;
+}
+
+// ===== TẢI DỮ LIỆU TỪ CACHE / MẠNG =====
+async function loadReportData(reportId, sheetName, forceRemote = false){
+  const report = getReportById(reportId);
+  if(!report) throw new Error('Không tìm thấy report đã chọn.');
+
+  const reportUrl = String(report.report_url || report.sheet_url || '').trim();
+  if(!reportUrl) throw new Error('Report "' + report.name + '" chưa có URL Apps Script.');
+
+  let json = null;
+
+  if (!forceRemote) {
+    json = getLocalDataCache(report.id);
+  }
+
+  if (!json) {
+    json = await dataFetch(reportUrl);
+    if(!json || json.status !== 'success') throw new Error((json && json.message) || 'Không tải được dữ liệu.');
+    if(!Array.isArray(json.sheets)) throw new Error('Chưa trả về danh sách sheets.');
+
+    json._fetchedAt = Date.now();
+    setLocalDataCache(report.id, json);
+  }
+
+  report.sheets = json.sheets;
+  renderSheetMenuForReport(report);
+
+  if(!report.sheets.length) throw new Error('Không có sheet nào.');
+
+  const rememberedKey = 'vnpt_sheet_' + String(report.id);
+  const remembered = safeStorage.get(rememberedKey);
+  let selectedName = sheetName || remembered;
+
+  if(!selectedName || !report.sheets.some(s => String(s.name) === String(selectedName))){
+    const compatible = report.sheets.find(s => {
+      try { return parseRowsIntoPackages(s.rows || []).length > 0; } catch(e) { return false; }
+    });
+    selectedName = compatible ? compatible.name : report.sheets[0].name;
+  }
+
+  const sheetSelect = document.getElementById('sheetSelect');
+  if(sheetSelect) sheetSelect.value = String(selectedName);
+
+  return loadSelectedSheet(report, selectedName);
+}
+
+function applyPackages(newPackages){
+  PACKAGES = newPackages;
+  SEARCH_INDEX = buildSearchIndex(PACKAGES);
+  LOCKED_COLUMN_WIDTHS = {};
+  LOCKED_COLUMN_WIDTHS_KEY = '';
+  state.search = ""; 
+  searchBox.value = "";
+  syncClearSearchButtons('');
+  sortState = {}; sortOrder = []; visibleCount = pageSize;
+
+  CONFIG_MODE = false;
+  document.body.classList.remove('config-mode');
+  const cfgBtn = document.getElementById('configBtn');
+  if (cfgBtn) { cfgBtn.textContent = '⚙ Cấu hình'; cfgBtn.classList.remove('active-config'); }
+  PENDING_HIDDEN_COLS = new Set(getHiddenColsForCurrent());
+  PENDING_HIDDEN_FILTERS = new Set(getHiddenFiltersForCurrent());
+  PENDING_GROUPED_FILTERS = cloneGroupedFiltersMap(getGroupedFiltersForCurrentMap());
+  PENDING_ONE_SELECT_FILTERS = new Set(getOneSelectFiltersForCurrent());
+  
+  updateHeaderFooter();
+  
+  dynamicFilter = new DynamicFilterGenerator(PACKAGES, 'dynamicFiltersContainer', () => {
+    visibleCount = pageSize;
+    render();
+  });
+  dynamicFilter.render();
+  render();
+}
+
+// ===== THỜI GIAN CẬP NHẬT LẦN CUỐI CỦA DỮ LIỆU (LAST UPDATED) =====
+let dataConfirmedLatestByReport = {};
+function getCurrentDataLastUpdated(){
+  let ts = null;
+  const report = getReportById(currentReportId);
+  if (report && report.updated_at) {
+    const d = new Date(report.updated_at);
+    if (!isNaN(d.getTime())) ts = d.getTime();
+  }
+  if (ts === null) {
+    try {
+      const cached = getLocalDataCache(currentReportId);
+      if (cached && cached._fetchedAt) ts = Number(cached._fetchedAt);
+    } catch (e) {}
+  }
+  const confirmed = dataConfirmedLatestByReport[String(currentReportId)];
+  if (confirmed && confirmed > (ts || 0)) {
+    ts = confirmed;
+  }
+  return ts;
+}
+
+function formatRelativeLastUpdated(ts){
+  const diff = Math.max(0, Date.now() - Number(ts));
+  const sec = Math.floor(diff / 1000);
+  const min = Math.floor(sec / 60);
+  if (sec < 5) return 'vừa xong';
+  if (min >= 1) {
+    if (min <= 30) return 'cách đây ' + min + ' phút';
+    const d = new Date(Number(ts));
+    return safeToLocaleDateString(d,'vi-VN') + ' ' + safeToLocaleTimeString(d,'vi-VN', { hour: '2-digit', minute: '2-digit' });
+  }
+  const secRound = Math.round(sec / 10) * 10;
+  if (secRound >= 60) return 'cách đây 1 phút';
+  return 'cách đây ' + secRound + 's';
+}
+
+function renderLastUpdated(){
+  const el = document.getElementById('lastUpdatedBadge');
+  if (!el) return;
+  const ts = getCurrentDataLastUpdated();
+  if (!ts) {
+    el.style.display = 'none';
+    el.textContent = '';
+    return;
+  }
+  el.style.display = 'flex';
+  el.innerHTML = '🕒 Last updated: <span class="lu-time">' + escapeHtml(formatRelativeLastUpdated(ts)) + '</span>';
+}
+
+setInterval(renderLastUpdated, 10000);
+
+function updateHeaderFooter() {
+  const report = getReportById(currentReportId);
+  if (report && CURRENT_SHEET_NAME) {
+    const subtitle = document.getElementById('subtitleText');
+    const footer = document.getElementById('footerNote');
+    const reportName = report.name || 'Bảng giá';
+    const sheetName = CURRENT_SHEET_NAME || 'Sheet';
+    if (subtitle) subtitle.textContent = `${reportName} · ${sheetName} — ${safeToLocaleDateString(new Date(),'vi-VN')}`;
+    if (footer) footer.textContent = `Nguồn: ${reportName} · ${sheetName} (VNPT).`;
+  }
+  renderLastUpdated();
+}
+
+function showEmptyState(msg){
+  PACKAGES = [];
+  SEARCH_INDEX = [];
+  LOCKED_COLUMN_WIDTHS = {};
+  LOCKED_COLUMN_WIDTHS_KEY = '';
+  document.getElementById('resultsBody').innerHTML = '';
+  const colgroup = document.getElementById('tableColgroup');
+  if (colgroup) colgroup.innerHTML = '<col style="width:56px;">';
+  document.getElementById('headerRow').innerHTML = '<th style="width:56px;text-align:center;cursor:default;background:var(--vnpt-blue-100);">#</th>';
+  document.querySelector('.table-wrap table').style.display = 'none';
+  renderUniformNote([]);
+  const empty = document.getElementById('emptyState');
+  empty.querySelector('div:last-child').textContent = msg;
+  empty.style.display = 'block';
+  updateInfiniteStatus(0, 0);
+  renderLastUpdated();
+}
+
+let REPORTS = [];
+let CURRENT_SHEET_NAME = '';
+let currentReportId = null;
+let editingReportId = null;
+
+async function selectReport(reportId, opts){
+  opts = opts || {};
+  const report = getReportById(reportId);
+  if(!report) throw new Error('Không tìm thấy report đã chọn.');
+
+  currentReportId = report.id;
+  safeStorage.set(LAST_REPORT_KEY, String(report.id));
+
+  const sourceSelect = document.getElementById('sourceSelect');
+  if(sourceSelect) sourceSelect.value = String(report.id);
+
+  if(!opts.silent) showEmptyState('Đang tải "' + report.name + '"...');
+
+  try{
+    const packages = await loadReportData(report.id, opts.sheetName, opts.forceRemote);
+    applyPackages(packages);
+    if(!opts.silent) showToast('Đã tải "' + report.name + ' → ' + (CURRENT_SHEET_NAME || 'Sheet') + '" (' + packages.length + ' dòng).');
+  }catch(err){
+    if(getReportSheets(report).length > 1){
+      showEmptyState('"' + report.name + '" có ' + getReportSheets(report).length + ' sheet. Hãy chọn sheet cần xem.');
+    }else{
+      showEmptyState('Không tải được dữ liệu "' + report.name + '": ' + (err.message || err));
+    }
+    showToast(err.message || 'Không tải được report.', true);
+  }
+}
+
+// ===== RENDER DANH SÁCH BÁO CÁO =====
+function renderReportsList(){
+  const reportsList = document.getElementById('reportsList');
+  if(!REPORTS.length){
+    reportsList.innerHTML = '<div style="color:var(--muted);font-size:13px;">Chưa có nguồn dữ liệu nào. Thêm một nguồn bên dưới để bắt đầu.</div>';
+    return;
+  }
+  reportsList.innerHTML = REPORTS.map(r => `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 0;border-bottom:1px solid var(--line);">
+      <div style="min-width:0;">
+        <div style="font-weight:600;font-size:13.5px;">${escapeHtml(r.name)} <span style="font-size:11px;color:var(--muted);font-weight:normal;">(v${escapeHtml(r.version || 1)})</span></div>
+        <div style="font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:320px;">${escapeHtml(r.sheet_url)}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button class="reset-btn" data-update="${r.id}" style="color:var(--vnpt-blue-700);font-weight:700;">Update</button>
+        <button class="reset-btn" data-edit="${r.id}">Sửa</button>
+        <button class="reset-btn" data-delete="${r.id}" style="color:#a12f2f;">Xoá</button>
+      </div>
+    </div>
+  `).join('');
+
+  reportsList.querySelectorAll('[data-update]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const r = REPORTS.find(x => x.id === btn.dataset.update);
+      if(!r) return;
+
+      btn.disabled = true;
+      const originalText = btn.textContent;
+      btn.textContent = '...';
+
+      try {
+        const nextVersion = (parseInt(r.version || 0, 10) || 0) + 1;
+
+        await configFetch('saveReport', {
+          id: r.id,
+          name: r.name,
+          sheet_url: r.sheet_url,
+          hidden_config: r.hidden_config || '',
+          version: nextVersion
+        });
+
+        r.version = nextVersion;
+        setLocalReportsCache(REPORTS);
+
+        safeStorage.remove(getLsDataKey(r.id));
+
+        await selectReport(r.id, { silent: false, forceRemote: true });
+
+        renderReportsList();
+        showToast(`✅ Đã cập nhật "${r.name}" lên v${nextVersion} và tải dữ liệu mới!`);
+      } catch(err) {
+        showToast(err.message || 'Cập nhật dữ liệu thất bại.', true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
+    });
+  });
+
+  reportsList.querySelectorAll('[data-edit]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const r = REPORTS.find(x => x.id === btn.dataset.edit);
+      if(!r) return;
+      editingReportId = r.id;
+      document.getElementById('reportNameInput').value = r.name;
+      document.getElementById('reportUrlInput').value = r.sheet_url;
+      document.getElementById('submitReportBtn').textContent = 'Lưu thay đổi cho "' + r.name + '"';
+      document.getElementById('reportNameInput').focus();
+    });
+  });
+
+  reportsList.querySelectorAll('[data-delete]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const r = REPORTS.find(x => x.id === btn.dataset.delete);
+      if(!r) return;
+      if(!confirm('Xoá nguồn dữ liệu "' + r.name + '"?')) return;
+      try{
+        await configFetch('deleteReport', { id: r.id });
+        showToast('Đã xoá "' + r.name + '".');
+        await refreshReportsList(true); 
+        if(currentReportId === r.id && REPORTS.length) selectReport(REPORTS[0].id);
+        else if(!REPORTS.length){ PACKAGES = []; showEmptyState('Chưa có nguồn dữ liệu nào. Bấm "Quản lý nguồn dữ liệu" để thêm.'); }
+      } catch(err){
+        document.getElementById('reportsError').textContent = err.message || 'Xoá thất bại.'; 
+        document.getElementById('reportsError').style.display = 'block';
+      }
+    });
+  });
+}
+
+async function refreshReportsList(skipDataReload = false){
+  try{
+    const json = await gsFetch(CONFIG_SCRIPT_URL, 'listReports', HARDCODED_SECRET_KEY, {});
+    if(!json || json.status !== 'success') throw new Error((json && json.message) || 'Không tải được cấu hình report.');
+    REPORTS = Array.isArray(json.reports) ? json.reports : [];
+    if(!REPORTS.length) throw new Error('Cấu hình không có report nào.');
+    
+    setLocalReportsCache(REPORTS);
+
+    renderReportsList(); 
+    renderSourceMenu();
+    
+    if (!skipDataReload) {
+      const remembered = safeStorage.get(LAST_REPORT_KEY);
+      const defaultId = remembered && REPORTS.some(r => String(r.id) === String(remembered)) ? remembered : REPORTS[0].id;
+      await selectReport(defaultId, {silent:true});
+    }
+  }catch(err){
+    showEmptyState('Không tải được cấu hình report: ' + (err.message || err));
+    showToast(err.message || 'Không tải được cấu hình report.', true);
+  }
+}
+
+const manageReportsBtn = document.getElementById('manageReportsBtn');
+const reportsOverlay = document.getElementById('reportsOverlay');
+const closeReportsBtn = document.getElementById('closeReportsBtn');
+const reportsError = document.getElementById('reportsError');
+const reportNameInput = document.getElementById('reportNameInput');
+const reportUrlInput = document.getElementById('reportUrlInput');
+const submitReportBtn = document.getElementById('submitReportBtn');
+
+function openReportsModal(){
+  reportsError.style.display = 'none';
+  editingReportId = null; reportNameInput.value = ''; reportUrlInput.value = '';
+  submitReportBtn.textContent = '+ Thêm / Cập nhật nguồn dữ liệu';
+  reportsOverlay.classList.add('open');
+  refreshReportsList(true).catch(err=>{ reportsError.textContent = err.message || 'Không tải được danh sách nguồn dữ liệu.'; reportsError.style.display = 'block'; });
+}
+function closeReportsModal(){ reportsOverlay.classList.remove('open'); }
+manageReportsBtn.addEventListener('click', openReportsModal);
+closeReportsBtn.addEventListener('click', closeReportsModal);
+reportsOverlay.addEventListener('click', (e)=>{ if(e.target === reportsOverlay) closeReportsModal(); });
+
+document.getElementById('submitReportBtn').addEventListener('click', async ()=>{
+  reportsError.style.display = 'none';
+  const name = reportNameInput.value.trim(); 
+  const sheetUrl = reportUrlInput.value.trim();
+  if(!name || !sheetUrl){ reportsError.textContent = 'Vui lòng nhập tên và URL Apps Script.'; reportsError.style.display = 'block'; return; }
+  submitReportBtn.disabled = true; 
+  const originalLabel = submitReportBtn.textContent;
+  submitReportBtn.textContent = 'Đang lưu...';
+  try{
+    const existingReport = editingReportId ? getReportById(editingReportId) : null;
+    const json = await configFetch('saveReport', {
+      id: editingReportId || '',
+      name,
+      sheet_url: sheetUrl,
+      hidden_config: existingReport ? (existingReport.hidden_config || '') : '',
+      version: existingReport ? (existingReport.version || 1) : 1
+    });
+    showToast('Đã lưu nguồn dữ liệu "' + name + '".');
+    editingReportId = null; reportNameInput.value = ''; reportUrlInput.value = '';
+    submitReportBtn.textContent = '+ Thêm / Cập nhật nguồn dữ liệu';
+    await refreshReportsList(true); 
+    if(!currentReportId || currentReportId === json.id) selectReport(json.id);
+  } catch(err){
+    reportsError.textContent = err.message || 'Lưu thất bại.'; reportsError.style.display = 'block';
+  } finally {
+    submitReportBtn.disabled = false;
+    if(submitReportBtn.textContent === 'Đang lưu...') submitReportBtn.textContent = originalLabel;
+  }
+});
+
+// ===== CLASS DYNAMIC FILTER GENERATOR =====
+class DynamicFilterGenerator {
+  constructor(data, containerId, onFilterChange) {
+    this.data = data;
+    this.container = document.getElementById(containerId);
+    this.onFilterChange = onFilterChange;
+    this.filterState = {};
+    this.domElements = {};
+    this.config = this.analyzeData(data);
+    this.closeHandlers = [];
+    this.valuePrefix = 'val::';
+    this.groupPrefix = 'grp::';
+    this.minusDeactivateArmed = {};
+  }
+
+  analyzeData(data) {
+    if (!data || data.length === 0) return {};
+    const keys = COLUMN_ORDER.filter(k => k in data[0]);
+    const config = {};
+    
+    keys.forEach(key => {
+      let valueCounts = {};
+      let rawValues = data.map(item => {
+        let val = item[key];
+        let strVal = isEmptyCellValue(val) ? "Blank" : String(val);
+        valueCounts[strVal] = (valueCounts[strVal] || 0) + 1;
+        return strVal;
+      });
+      
+      let uniqueValues = [...new Set(rawValues)];
+      let nonBlankValues = uniqueValues.filter(v => v !== "Blank");
+      
+      if (uniqueValues.length <= 1) return;
+
+      // Dùng regex khớp toàn bộ chuỗi thay vì parseFloat (parseFloat chỉ đọc
+      // phần số ở đầu chuỗi, nên các giá trị hỗn hợp như "500ULM(*)" từng bị
+      // coi là số thuần rồi bị cắt mất phần chữ khi hiển thị ở slider/combobox,
+      // trong khi bảng tra cứu vẫn hiển thị đầy đủ "500ULM(*)" -> gây lệch nhau.
+      let isNumeric = nonBlankValues.length > 0 && nonBlankValues.every(v => /^-?\d+(\.\d+)?$/.test(String(v).trim()) && isFinite(parseFloat(v)));
+      
+      let min = 0, max = 0;
+      let hasBlank = uniqueValues.includes("Blank");
+      
+      if (isNumeric) {
+        let nums = nonBlankValues.map(v => parseFloat(v));
+        min = Math.min(...nums);
+        max = Math.max(...nums);
+        uniqueValues.sort((a,b) => parseFloat(a) - parseFloat(b));
+        if(hasBlank){
+          uniqueValues = uniqueValues.filter(v=>v!=="Blank");
+          uniqueValues.push("Blank");
+        }
+      } else {
+        uniqueValues.sort((a,b) => String(a).localeCompare(String(b)));
+      }
+
+      config[key] = {
+        key, uniqueValues, isNumeric, min, max, valueCounts, hasBlank
+      };
+
+      this.filterState[key] = {
+        selected: new Set(),
+        currentMin: min,
+        currentMax: max
+      };
+      
+      this.domElements[key] = { cleanupFns: [], dropdownState: null };
+    });
+    return config;
+  }
+
+  cleanupCloseHandlers() {
+    this.closeHandlers.forEach(fn => {
+      try { fn(); } catch (e) {}
+    });
+    this.closeHandlers = [];
+  }
+
+  cleanupFieldHandlers(fieldKey) {
+    const dom = this.domElements[fieldKey];
+    if (!dom || !Array.isArray(dom.cleanupFns)) return;
+    dom.cleanupFns.forEach(fn => {
+      try { fn(); } catch (e) {}
+    });
+    dom.cleanupFns = [];
+  }
+
+  makeValueOptionId(val) {
+    return this.valuePrefix + String(val);
+  }
+
+  makeGroupOptionId(name) {
+    return this.groupPrefix + String(name);
+  }
+
+  isGroupOptionId(optionId) {
+    return String(optionId || '').startsWith(this.groupPrefix);
+  }
+
+  getGroupNameFromOptionId(optionId) {
+    return String(optionId || '').slice(this.groupPrefix.length);
+  }
+
+  getGroupsForField(fieldKey) {
+    const source = CONFIG_MODE ? PENDING_GROUPED_FILTERS : getGroupedFiltersForCurrentMap();
+    const groups = Array.isArray(source[fieldKey]) ? source[fieldKey] : [];
+    return groups
+      .map(g => ({
+        name: String(g && g.name || '').trim(),
+        members: [...new Set((Array.isArray(g && g.members) ? g.members : []).map(v => String(v)).filter(v => v))]
+      }))
+      .filter(g => g.name && g.members.length);
+  }
+
+  setGroupsForField(fieldKey, groups) {
+    PENDING_GROUPED_FILTERS[fieldKey] = groups
+      .map(g => ({
+        name: String(g && g.name || '').trim(),
+        members: [...new Set((Array.isArray(g && g.members) ? g.members : []).map(v => String(v)).filter(v => v))]
+      }))
+      .filter(g => g.name && g.members.length);
+  }
+
+  hasAnyGroup(fieldKey) {
+    return this.getGroupsForField(fieldKey).length > 0;
+  }
+
+  isOneSelectConfigured(fieldKey) {
+    if (CONFIG_MODE) return PENDING_ONE_SELECT_FILTERS.has(fieldKey);
+    return getOneSelectFiltersForCurrent().includes(fieldKey);
+  }
+
+  clearOneSelectConfig(fieldKey) {
+    if (CONFIG_MODE) {
+      PENDING_ONE_SELECT_FILTERS.delete(fieldKey);
+      return;
+    }
+    removeOneSelectFilterForCurrent(fieldKey);
+  }
+
+  resetMinusArm(fieldKey) {
+    this.minusDeactivateArmed[fieldKey] = 0;
+  }
+
+  isOneSelectActive(field, optionsToDisplay) {
+    // Không giới hạn số lượng lựa chọn cho mode select-one: chỉ cần đã bật cấu hình là active.
+    return this.isOneSelectConfigured(field.key);
+  }
+
+  getBaseValuesInRange(field) {
+    let values = field.uniqueValues;
+    if (!field.isNumeric) return values;
+
+    const isAtLeftmost = this.filterState[field.key].currentMin === field.min;
+    return field.uniqueValues.filter(v => {
+      if (v === 'Blank') return field.hasBlank && isAtLeftmost;
+      const num = parseFloat(v);
+      return num >= this.filterState[field.key].currentMin && num <= this.filterState[field.key].currentMax;
+    });
+  }
+
+  buildOptions(field) {
+    const baseValues = this.getBaseValuesInRange(field);
+    const baseValueSet = new Set(baseValues);
+    const groups = this.getGroupsForField(field.key);
+
+    const groupedMembers = new Set();
+    groups.forEach(g => g.members.forEach(m => groupedMembers.add(m)));
+
+    const valueOptions = baseValues
+      .filter(v => !groupedMembers.has(v))
+      .map(v => {
+        const actualVal = v === 'Blank' ? '' : (field.isNumeric ? parseFloat(v) : v);
+        const displayHtml = v === 'Blank' ? '(trống)' : formatDisplayValue(field.key, actualVal);
+        const searchText = (v === 'Blank' ? '(trống)' : String(actualVal)).toLowerCase();
+        return {
+          id: this.makeValueOptionId(v),
+          type: 'value',
+          value: v,
+          members: [v],
+          displayHtml,
+          searchText,
+          count: field.valueCounts[v] || 0,
+          sortNumber: field.isNumeric && v !== 'Blank' ? parseFloat(v) : null
+        };
+      });
+
+    const groupOptions = groups
+      .map(g => {
+        const activeMembers = g.members.filter(m => baseValueSet.has(m));
+        if (!activeMembers.length) return null;
+        const count = activeMembers.reduce((sum, m) => sum + (field.valueCounts[m] || 0), 0);
+        const numericMembers = activeMembers
+          .map(m => parseFloat(m))
+          .filter(n => !Number.isNaN(n));
+        return {
+          id: this.makeGroupOptionId(g.name),
+          type: 'group',
+          groupName: g.name,
+          members: activeMembers,
+          displayHtml: escapeHtml(g.name),
+          searchText: g.name.toLowerCase(),
+          count,
+          sortNumber: numericMembers.length ? Math.min(...numericMembers) : null
+        };
+      })
+      .filter(Boolean);
+
+    // Khi đã có group, ưu tiên sort group theo tên (A->Z) để dễ tìm.
+    // Option thường vẫn giữ quy tắc sort cũ theo kiểu dữ liệu của cột.
+    if (field.isNumeric) {
+      valueOptions.sort((a, b) => {
+        const na = Number.isFinite(a.sortNumber) ? a.sortNumber : Number.MAX_SAFE_INTEGER;
+        const nb = Number.isFinite(b.sortNumber) ? b.sortNumber : Number.MAX_SAFE_INTEGER;
+        if (na !== nb) return na - nb;
+        return a.displayHtml.localeCompare(b.displayHtml);
+      });
+    } else {
+      valueOptions.sort((a, b) => a.displayHtml.localeCompare(b.displayHtml));
+    }
+
+    groupOptions.sort((a, b) => a.displayHtml.localeCompare(b.displayHtml));
+
+    return [...groupOptions, ...valueOptions];
+  }
+
+  hasSelectedGroupedOption(fieldKey) {
+    const selected = this.filterState[fieldKey] ? this.filterState[fieldKey].selected : new Set();
+    if (!selected || selected.size === 0) return false;
+    const groupNames = new Set(this.getGroupsForField(fieldKey).map(g => g.name));
+    for (const optionId of selected) {
+      if (!this.isGroupOptionId(optionId)) continue;
+      if (groupNames.has(this.getGroupNameFromOptionId(optionId))) return true;
+    }
+    return false;
+  }
+
+  updateMinusButtonVisibility(fieldKey) {
+    const dom = this.domElements[fieldKey];
+    if (!dom || !dom.minusBtn) return;
+    const visible = this.hasSelectedGroupedOption(fieldKey) || this.isOneSelectConfigured(fieldKey);
+    dom.minusBtn.classList.toggle('visible', visible);
+  }
+
+  handleMinusAction(field) {
+    if (!CONFIG_MODE) return;
+
+    if (this.isOneSelectConfigured(field.key)) {
+      const armedCount = this.minusDeactivateArmed[field.key] || 0;
+      if (armedCount < 1) {
+        this.minusDeactivateArmed[field.key] = 1;
+        showToast('Bấm - lần nữa để huỷ chế độ chọn đơn.');
+        return;
+      }
+
+      this.clearOneSelectConfig(field.key);
+      this.resetMinusArm(field.key);
+      this.filterState[field.key].selected = new Set();
+      this.renderSelector(field);
+      this.updateMinusButtonVisibility(field.key);
+      this.onFilterChange();
+      showToast('Đã huỷ chế độ chọn đơn.');
+      return;
+    }
+
+    this.resetMinusArm(field.key);
+    this.removeSelectedGroups(field);
+  }
+
+  createGroupFromSelection(field) {
+    if (!CONFIG_MODE) return;
+    const options = this.buildOptions(field);
+    const selected = this.filterState[field.key].selected;
+
+    // Điều kiện kích hoạt "select one": không chọn giá trị nào mà bấm "+".
+    // Không giới hạn số lượng lựa chọn hiện có của bộ lọc.
+    if (!selected || selected.size === 0) {
+      if (this.isOneSelectConfigured(field.key)) {
+        showToast('Bộ lọc này đang ở chế độ chọn đơn.', true);
+        return;
+      }
+      PENDING_ONE_SELECT_FILTERS.add(field.key);
+      this.resetMinusArm(field.key);
+      this.filterState[field.key].selected = new Set();
+      this.renderSelector(field);
+      this.updateMinusButtonVisibility(field.key);
+      this.onFilterChange();
+      showToast('Đã bật chế độ chọn đơn cho bộ lọc này.');
+      return;
+    }
+
+    const byId = new Map(options.map(o => [o.id, o]));
+    const selectedOptions = [...selected]
+      .map(optionId => byId.get(optionId))
+      .filter(Boolean);
+
+    // Exactly one selected group => rename that group instead of creating new one.
+    if (selectedOptions.length === 1 && selectedOptions[0].type === 'group') {
+      const oldName = selectedOptions[0].groupName;
+      const nameInput = window.prompt('Nhập tên mới cho group', oldName);
+      if (nameInput === null) return;
+
+      const newName = String(nameInput).trim();
+      if (!newName) {
+        showToast('Tên group không được để trống.', true);
+        return;
+      }
+
+      const groups = this.getGroupsForField(field.key);
+      if (groups.some(g => g.name.toLowerCase() === newName.toLowerCase() && g.name !== oldName)) {
+        showToast('Tên group đã tồn tại. Vui lòng nhập tên khác.', true);
+        return;
+      }
+
+      const renamedGroups = groups.map(g => {
+        if (g.name !== oldName) return g;
+        return { name: newName, members: [...g.members] };
+      });
+
+      this.setGroupsForField(field.key, renamedGroups);
+      this.resetMinusArm(field.key);
+      this.filterState[field.key].selected = new Set([this.makeGroupOptionId(newName)]);
+      this.renderSelector(field);
+      this.updateMinusButtonVisibility(field.key);
+      this.onFilterChange();
+      showToast('Đã đổi tên group thành "' + newName + '".');
+      return;
+    }
+
+    const members = new Set();
+    selectedOptions.forEach(option => {
+      option.members.forEach(v => members.add(v));
+    });
+
+    if (!members.size) {
+      showToast('Không có dữ liệu hợp lệ để gộp group.', true);
+      return;
+    }
+
+    const nameInput = window.prompt('Nhập tên group mới');
+    if (nameInput === null) return;
+
+    const name = String(nameInput).trim();
+    if (!name) {
+      showToast('Tên group không được để trống.', true);
+      return;
+    }
+
+    const groups = this.getGroupsForField(field.key);
+    if (groups.some(g => g.name.toLowerCase() === name.toLowerCase())) {
+      showToast('Tên group đã tồn tại. Vui lòng nhập tên khác.', true);
+      return;
+    }
+
+    const selectedGroupNames = new Set();
+    selectedOptions.forEach(option => {
+      if (option.type !== 'group') return;
+      selectedGroupNames.add(option.groupName);
+    });
+
+    const mergedMembers = [...members];
+
+    // If regrouping from existing groups, remove those groups and keep
+    // memberships non-overlapping to avoid ambiguous toggling/selection.
+    let nextGroups = groups
+      .filter(g => !selectedGroupNames.has(g.name))
+      .map(g => ({
+        name: g.name,
+        members: g.members.filter(v => !members.has(v))
+      }))
+      .filter(g => g.members.length);
+
+    nextGroups.push({ name, members: mergedMembers });
+    this.setGroupsForField(field.key, nextGroups);
+    this.resetMinusArm(field.key);
+    this.filterState[field.key].selected = new Set([this.makeGroupOptionId(name)]);
+    this.renderSelector(field);
+    this.updateMinusButtonVisibility(field.key);
+    this.onFilterChange();
+    showToast('Đã tạo group "' + name + '".');
+  }
+
+  removeSelectedGroups(field) {
+    if (!CONFIG_MODE) return;
+
+    const selected = this.filterState[field.key].selected;
+    const groups = this.getGroupsForField(field.key);
+    const removableNames = new Set();
+
+    selected.forEach(optionId => {
+      if (!this.isGroupOptionId(optionId)) return;
+      const name = this.getGroupNameFromOptionId(optionId);
+      if (groups.some(g => g.name === name)) removableNames.add(name);
+    });
+
+    if (!removableNames.size) {
+      showToast('Hãy chọn group đã gộp trước khi bỏ gộp.', true);
+      return;
+    }
+
+    const removedGroups = groups.filter(g => removableNames.has(g.name));
+    const remainingGroups = groups.filter(g => !removableNames.has(g.name));
+    this.setGroupsForField(field.key, remainingGroups);
+
+    const nextSelected = new Set();
+    selected.forEach(optionId => {
+      if (!this.isGroupOptionId(optionId)) nextSelected.add(optionId);
+    });
+    removedGroups.forEach(g => g.members.forEach(v => nextSelected.add(this.makeValueOptionId(v))));
+    this.resetMinusArm(field.key);
+    this.filterState[field.key].selected = nextSelected;
+
+    this.renderSelector(field);
+    this.updateMinusButtonVisibility(field.key);
+    this.onFilterChange();
+    showToast('Đã bỏ gộp group đã chọn.');
+  }
+
+  matchesCondition(key, val, condition) {
+    if (!condition || !condition.selected || condition.selected.size === 0) return true;
+
+    if (condition.selected.has(val)) return true;
+    if (condition.selected.has(this.makeValueOptionId(val))) return true;
+
+    const groupsByName = new Map(this.getGroupsForField(key).map(g => [g.name, g]));
+    for (const optionId of condition.selected) {
+      if (!this.isGroupOptionId(optionId)) continue;
+      const groupName = this.getGroupNameFromOptionId(optionId);
+      const group = groupsByName.get(groupName);
+      if (group && group.members.includes(val)) return true;
+    }
+    return false;
+  }
+
+  render() {
+    this.cleanupCloseHandlers();
+    this.container.innerHTML = '';
+    
+    Object.values(this.config).forEach(field => {
+      const hiddenConfirmed = isFilterHiddenConfirmed(field.key);
+      if (!CONFIG_MODE && hiddenConfirmed) return;
+
+      const hasGroupedOptions = this.hasAnyGroup(field.key);
+      if (field.isNumeric && hasGroupedOptions) {
+        this.filterState[field.key].currentMin = field.min;
+        this.filterState[field.key].currentMax = field.max;
+      }
+
+      const groupDiv = document.createElement('div');
+      groupDiv.className = 'filter-group';
+      if (CONFIG_MODE && PENDING_HIDDEN_FILTERS.has(field.key)) {
+        groupDiv.classList.add('filter-marked-hidden');
+      }
+
+      const labelRow = document.createElement('div');
+      labelRow.className = 'filter-label-row';
+
+      const label = document.createElement('label');
+      label.className = 'filter-label';
+      label.textContent = this.formatLabel(field.key);
+      labelRow.appendChild(label);
+
+      const actionsWrap = document.createElement('div');
+      actionsWrap.className = 'filter-actions';
+
+      const plusBtn = document.createElement('span');
+      plusBtn.className = 'filter-action-btn filter-plus-btn';
+      plusBtn.textContent = '+';
+      plusBtn.title = 'Gộp các lựa chọn thành group mới';
+      plusBtn.onclick = (e) => {
+        e.stopPropagation();
+        this.createGroupFromSelection(field);
+      };
+      actionsWrap.appendChild(plusBtn);
+
+      const minusBtn = document.createElement('span');
+      minusBtn.className = 'filter-action-btn filter-minus-btn' + ((this.hasSelectedGroupedOption(field.key) || this.isOneSelectConfigured(field.key)) ? ' visible' : '');
+      minusBtn.textContent = '−';
+      minusBtn.title = 'Bỏ gộp group / huỷ chọn đơn';
+      minusBtn.onclick = (e) => {
+        e.stopPropagation();
+        this.handleMinusAction(field);
+      };
+      this.domElements[field.key].minusBtn = minusBtn;
+      actionsWrap.appendChild(minusBtn);
+
+      const xBtn = document.createElement('span');
+      xBtn.className = 'filter-action-btn filter-x-btn' + (PENDING_HIDDEN_FILTERS.has(field.key) ? ' marked' : '');
+      xBtn.textContent = '✕';
+      xBtn.title = 'Đánh dấu ẩn bộ lọc này';
+      xBtn.onclick = (e) => toggleHiddenFilter(field.key, e);
+      actionsWrap.appendChild(xBtn);
+
+      labelRow.appendChild(actionsWrap);
+
+      groupDiv.appendChild(labelRow);
+
+      if (field.isNumeric && !hasGroupedOptions) {
+        groupDiv.appendChild(this.createSlider(field));
+      }
+
+      const selectorContainer = document.createElement('div');
+      this.domElements[field.key].selectorContainer = selectorContainer;
+      groupDiv.appendChild(selectorContainer);
+
+      this.container.appendChild(groupDiv);
+      this.renderSelector(field);
+    });
+  }
+
+  onSliderChange(field, newMin, newMax) {
+    this.filterState[field.key].currentMin = newMin;
+    this.filterState[field.key].currentMax = newMax;
+
+    const optionsInRange = this.buildOptions(field);
+    if (this.isOneSelectActive(field, optionsInRange)) {
+      this.filterState[field.key].selected = new Set();
+    } else {
+      this.filterState[field.key].selected = new Set(optionsInRange.map(o => o.id));
+    }
+    this.resetMinusArm(field.key);
+    this.renderSelector(field);
+    this.updateMinusButtonVisibility(field.key);
+    this.onFilterChange();
+  }
+
+  onSelectorChange(field, optionId, isChecked) {
+    const optionsToDisplay = this.buildOptions(field);
+    const isOneSelect = this.isOneSelectActive(field, optionsToDisplay);
+
+    if (isOneSelect) {
+      if (isChecked) {
+        this.filterState[field.key].selected = new Set([optionId]);
+      } else {
+        this.filterState[field.key].selected.delete(optionId);
+      }
+    } else {
+      if (isChecked) this.filterState[field.key].selected.add(optionId);
+      else this.filterState[field.key].selected.delete(optionId);
+    }
+
+    this.resetMinusArm(field.key);
+    this.renderSelector(field);
+    this.updateMinusButtonVisibility(field.key);
+    this.onFilterChange();
+  }
+
+  resetFilters() {
+    Object.keys(this.filterState).forEach(key => {
+      const field = this.config[key];
+      if (field.isNumeric) {
+        this.filterState[key].selected = new Set();
+        this.filterState[key].currentMin = field.min;
+        this.filterState[key].currentMax = field.max;
+      } else {
+        this.filterState[key].selected = new Set();
+      }
+    });
+    this.render();
+    this.onFilterChange();
+  }
+
+  renderSelector(field) {
+    const domState = this.domElements[field.key];
+    const container = domState.selectorContainer;
+    const existingDropdown = container.querySelector('.combo-dropdown');
+    const existingSearchInput = container.querySelector('.combo-dropdown .search-box');
+    const existingOptionsBox = container.querySelector('.combo-options');
+    const cached = domState.dropdownState || {};
+    const preservedState = {
+      wasOpen: existingDropdown ? existingDropdown.classList.contains('open') : !!cached.wasOpen,
+      searchValue: existingSearchInput ? existingSearchInput.value : (cached.searchValue || ''),
+      scrollTop: existingOptionsBox ? existingOptionsBox.scrollTop : (cached.scrollTop || 0)
+    };
+    domState.dropdownState = { ...preservedState };
+
+    this.cleanupFieldHandlers(field.key);
+
+    container.innerHTML = '';
+
+    const optionsToDisplay = this.buildOptions(field);
+    const isOneSelect = this.isOneSelectActive(field, optionsToDisplay);
+
+    if (optionsToDisplay.length < 6) {
+      container.appendChild(this.createTags(field, optionsToDisplay, isOneSelect));
+    } else {
+      container.appendChild(this.createCombobox(field, optionsToDisplay, preservedState, isOneSelect));
+    }
+    this.updateMinusButtonVisibility(field.key);
+  }
+
+  createTags(field, optionsToDisplay, isOneSelect) {
+    const chipList = document.createElement('div');
+    chipList.className = 'chip-list';
+    
+    optionsToDisplay.forEach(option => {
+      const chip = document.createElement('div');
+      chip.className = 'chip';
+      if (isOneSelect) chip.classList.add('select-mode-single-option');
+      const countStr = option.count ? ` (${option.count})` : '';
+      chip.innerHTML = `${option.displayHtml}${countStr}`;
+      
+      if (this.filterState[field.key].selected.has(option.id)) {
+        chip.classList.add('active');
+      }
+
+      chip.onclick = () => {
+        const isCurrentlySelected = this.filterState[field.key].selected.has(option.id);
+        this.onSelectorChange(field, option.id, !isCurrentlySelected);
+      };
+      chipList.appendChild(chip);
+    });
+    return chipList;
+  }
+
+  createCombobox(field, optionsToDisplay, preservedState, isOneSelect) {
+    preservedState = preservedState || { wasOpen: false, searchValue: '', scrollTop: 0 };
+    const box = document.createElement('div');
+    box.className = 'combo-box';
+    const domState = this.domElements[field.key];
+    
+    const header = document.createElement('div');
+    header.className = 'combo-header';
+    if (isOneSelect) header.classList.add('select-mode-single-option');
+    const selectedIds = this.filterState[field.key].selected;
+    const selCount = selectedIds.size;
+    const totalInRange = optionsToDisplay.length;
+    let displayText;
+    if (isOneSelect && selCount === 1) {
+      const selectedId = [...selectedIds][0];
+      const selectedOption = optionsToDisplay.find(o => o.id === selectedId);
+      if (selectedOption) {
+        const countStr = selectedOption.count ? ` (${selectedOption.count})` : '';
+        displayText = `${selectedOption.displayHtml}${countStr}`;
+      } else {
+        displayText = `Đã chọn (${selCount})`;
+      }
+    } else {
+      displayText = selCount > 0 ? `Đã chọn (${selCount})` : `Tất cả (${totalInRange})`;
+    }
+    header.innerHTML = `<span>${displayText}</span> <span>▼</span>`;
+    
+    const dropdown = document.createElement('div');
+    dropdown.className = 'combo-dropdown';
+    
+    const searchWrapper = document.createElement('div');
+    searchWrapper.style.position = 'relative';
+    searchWrapper.style.margin = '8px';
+    
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.className = 'search-box';
+    searchInput.placeholder = 'Tìm kiếm...';
+    searchInput.style.width = '100%';
+    
+    const clearSearchBtn = document.createElement('button');
+    clearSearchBtn.textContent = '✕';
+    clearSearchBtn.style.cssText = `
+      position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; font-size: 14px; color: var(--muted);
+      cursor: pointer; display: none; padding: 0 4px;
+    `;
+    clearSearchBtn.onclick = (e) => {
+      e.stopPropagation();
+      searchInput.value = '';
+      clearSearchBtn.style.display = 'none';
+      renderOptions('');
+      searchInput.focus();
+    };
+    
+    searchInput.oninput = (e) => {
+      const val = e.target.value;
+      clearSearchBtn.style.display = val ? 'block' : 'none';
+      domState.dropdownState = {
+        wasOpen: true,
+        searchValue: val,
+        scrollTop: 0
+      };
+      renderOptions(val);
+    };
+    
+    searchWrapper.appendChild(searchInput);
+    searchWrapper.appendChild(clearSearchBtn);
+    
+    const actions = document.createElement('div');
+    actions.className = 'combo-actions';
+    const selectAll = document.createElement('span'); selectAll.textContent = 'Chọn tất cả';
+    const deselectAll = document.createElement('span'); deselectAll.textContent = 'Bỏ chọn';
+    actions.appendChild(selectAll); actions.appendChild(deselectAll);
+
+    const optionsContainer = document.createElement('div');
+    optionsContainer.className = 'combo-options';
+    optionsContainer.addEventListener('scroll', () => {
+      domState.dropdownState = {
+        wasOpen: dropdown.classList.contains('open'),
+        searchValue: searchInput.value,
+        scrollTop: optionsContainer.scrollTop
+      };
+    });
+
+    let currentFilterText = '';
+
+    const renderOptions = (filterText = '') => {
+      currentFilterText = filterText;
+      optionsContainer.innerHTML = '';
+      let visibleOptions = optionsToDisplay;
+      
+      if (filterText) {
+        visibleOptions = optionsToDisplay.filter(option => {
+          return option.searchText.includes(filterText.toLowerCase());
+        });
+      }
+      
+      visibleOptions.forEach(option => {
+        const opt = document.createElement('label');
+        opt.className = 'combo-option';
+        if (isOneSelect) opt.classList.add('select-mode-single-option');
+        const checkbox = document.createElement('input');
+        checkbox.type = isOneSelect ? 'radio' : 'checkbox';
+        if (isOneSelect) checkbox.name = 'one-select-' + field.key;
+        const isChecked = this.filterState[field.key].selected.has(option.id);
+        checkbox.checked = isChecked;
+        if (isOneSelect && isChecked) opt.classList.add('selected');
+        checkbox.dataset.optionId = option.id;
+        opt.appendChild(checkbox);
+
+        const textNode = document.createElement('span');
+        const countStr = option.count ? ` (${option.count})` : '';
+        textNode.innerHTML = ` ${option.displayHtml}${countStr}`;
+        opt.appendChild(textNode);
+
+        checkbox.onchange = (e) => {
+          e.stopPropagation();
+          domState.dropdownState = {
+            wasOpen: true,
+            searchValue: searchInput.value,
+            scrollTop: optionsContainer.scrollTop
+          };
+          this.onSelectorChange(field, option.id, e.target.checked);
+        };
+        opt.onclick = (e) => e.stopPropagation();
+        optionsContainer.appendChild(opt);
+      });
+      
+      if (visibleOptions.length === 0) {
+        const emptyMsg = document.createElement('div');
+        emptyMsg.style.cssText = 'padding:12px;text-align:center;color:var(--muted);font-size:13px;';
+        emptyMsg.textContent = 'Không tìm thấy kết quả';
+        optionsContainer.appendChild(emptyMsg);
+      }
+    };
+    
+    if (preservedState.searchValue) {
+      searchInput.value = preservedState.searchValue;
+      clearSearchBtn.style.display = 'block';
+    }
+    renderOptions(preservedState.searchValue);
+
+    selectAll.onclick = (e) => {
+      e.stopPropagation();
+      let optionsToSelect = optionsToDisplay;
+      if (currentFilterText) {
+        optionsToSelect = optionsToDisplay.filter(option => {
+          return option.searchText.includes(currentFilterText.toLowerCase());
+        });
+      }
+      optionsToSelect.forEach(option => this.filterState[field.key].selected.add(option.id));
+      this.renderSelector(field);
+      this.onFilterChange();
+    };
+    
+    deselectAll.onclick = (e) => {
+      e.stopPropagation();
+      let optionsToDeselect = optionsToDisplay;
+      if (currentFilterText) {
+        optionsToDeselect = optionsToDisplay.filter(option => {
+          return option.searchText.includes(currentFilterText.toLowerCase());
+        });
+      }
+      optionsToDeselect.forEach(option => this.filterState[field.key].selected.delete(option.id));
+      this.renderSelector(field);
+      this.onFilterChange();
+    };
+
+    dropdown.appendChild(searchWrapper);
+    dropdown.appendChild(actions);
+    dropdown.appendChild(optionsContainer);
+    box.appendChild(header);
+    box.appendChild(dropdown);
+
+    const positionDropdown = () => {
+      const rect = box.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const spaceBelow = viewportHeight - rect.bottom;
+      const dropdownHeight = Math.min(250, optionsContainer.scrollHeight + 100);
+      
+      dropdown.classList.remove('drop-up', 'drop-down');
+      if (spaceBelow < dropdownHeight && rect.top > dropdownHeight) {
+        dropdown.classList.add('drop-up');
+      } else {
+        dropdown.classList.add('drop-down');
+      }
+    };
+
+    if (preservedState.wasOpen) {
+      dropdown.classList.add('open');
+      positionDropdown();
+    }
+    requestAnimationFrame(() => {
+      optionsContainer.scrollTop = preservedState.scrollTop || 0;
+    });
+
+    const closeDropdown = (e) => {
+      if (!box.contains(e.target)) {
+        dropdown.classList.remove('open');
+        document.removeEventListener('scroll', positionDropdown);
+        domState.dropdownState = {
+          wasOpen: false,
+          searchValue: searchInput.value,
+          scrollTop: optionsContainer.scrollTop
+        };
+      }
+    };
+    
+    const openDropdown = () => {
+      dropdown.classList.add('open');
+      positionDropdown();
+      document.addEventListener('scroll', positionDropdown, { passive: true });
+      domState.dropdownState = {
+        wasOpen: true,
+        searchValue: searchInput.value,
+        scrollTop: optionsContainer.scrollTop
+      };
+      setTimeout(() => searchInput.focus(), 50);
+    };
+
+    header.onclick = (e) => {
+      e.stopPropagation();
+      const isOpen = dropdown.classList.contains('open');
+      if (isOpen) {
+        dropdown.classList.remove('open');
+        document.removeEventListener('scroll', positionDropdown);
+        domState.dropdownState = {
+          wasOpen: false,
+          searchValue: searchInput.value,
+          scrollTop: optionsContainer.scrollTop
+        };
+      } else {
+        openDropdown();
+      }
+    };
+
+    const updatePosition = () => {
+      if (dropdown.classList.contains('open')) {
+        positionDropdown();
+      }
+    };
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, { passive: true });
+
+    document.addEventListener('click', closeDropdown, true);
+
+    const cleanupFns = domState.cleanupFns;
+    cleanupFns.push(() => document.removeEventListener('click', closeDropdown, true));
+    cleanupFns.push(() => document.removeEventListener('scroll', positionDropdown));
+    cleanupFns.push(() => window.removeEventListener('resize', updatePosition));
+    cleanupFns.push(() => window.removeEventListener('scroll', updatePosition));
+
+    this.closeHandlers.push(() => document.removeEventListener('click', closeDropdown, true));
+    this.closeHandlers.push(() => document.removeEventListener('scroll', positionDropdown));
+    this.closeHandlers.push(() => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition);
+    });
+
+    return box;
+  }
+
+  createSlider(field) {
+    const wrap = document.createElement('div');
+    const vals = document.createElement('div');
+    vals.className = 'range-values';
+
+    const minLbl = document.createElement('span');
+    const maxLbl = document.createElement('span');
+    vals.appendChild(minLbl);
+    vals.appendChild(maxLbl);
+
+    const sliderWrap = document.createElement('div');
+    sliderWrap.className = 'dual-slider';
+
+    const track = document.createElement('div');
+    track.className = 'slider-track';
+    const fill = document.createElement('div');
+    fill.className = 'slider-fill';
+
+    const minInput = document.createElement('input');
+    minInput.type = 'range';
+    minInput.min = field.min;
+    minInput.max = field.max;
+    
+    let step = 1;
+    if(field.max > 10000) step = 10000;
+    else if(field.max > 100) step = 10;
+
+    // Ensure slider can always land exactly on the configured max value.
+    // Example: min=2, max=200, step=10 would otherwise skip 200 and stop at 192.
+    const range = field.max - field.min;
+    if (step > 1 && Number.isFinite(range) && range > 0) {
+      const remainder = range % step;
+      if (remainder !== 0) step = 1;
+    }
+    
+    minInput.step = step;
+    minInput.value = this.filterState[field.key].currentMin;
+
+    const maxInput = document.createElement('input');
+    maxInput.type = 'range';
+    maxInput.min = field.min;
+    maxInput.max = field.max;
+    maxInput.step = step;
+    maxInput.value = this.filterState[field.key].currentMax;
+
+    sliderWrap.appendChild(track);
+    sliderWrap.appendChild(fill);
+    sliderWrap.appendChild(minInput);
+    sliderWrap.appendChild(maxInput);
+
+    const updateUI = () => {
+      let minV = parseFloat(minInput.value);
+      let maxV = parseFloat(maxInput.value);
+      if(minV > maxV) { let tmp = minV; minV = maxV; maxV = tmp; }
+      
+      const minDisplay = field.hasBlank && minV === field.min ? '-' : formatDisplayValue(field.key, minV);
+      const maxDisplay = formatDisplayValue(field.key, maxV);
+      
+      minLbl.innerHTML = `Từ: <b>${minDisplay}</b>`;
+      maxLbl.innerHTML = `Đến: <b>${maxDisplay}</b>`;
+
+      let range = field.max - field.min;
+      if (range === 0) range = 1;
+
+      const percent1 = ((minV - field.min) / range) * 100;
+      const percent2 = ((maxV - field.min) / range) * 100;
+
+      fill.style.left = percent1 + '%';
+      fill.style.width = (percent2 - percent1) + '%';
+    };
+
+    const onInput = () => updateUI();
+
+    const onChange = () => {
+      let minV = parseFloat(minInput.value);
+      let maxV = parseFloat(maxInput.value);
+      if(minV > maxV) { let tmp = minV; minV = maxV; maxV = tmp; }
+      this.onSliderChange(field, minV, maxV);
+    };
+
+    minInput.addEventListener('input', onInput);
+    maxInput.addEventListener('input', onInput);
+    minInput.addEventListener('change', onChange);
+    maxInput.addEventListener('change', onChange);
+
+    updateUI();
+
+    wrap.appendChild(vals);
+    wrap.appendChild(sliderWrap);
+    return wrap;
+  }
+
+  formatLabel(key) {
+    return COLUMN_LABELS[key] || key;
+  }
+}
+
+(function initDynamicStickyPanels(){
+  const topbarEl = document.querySelector('.topbar');
+  const panels = Array.from(document.querySelectorAll('.app-layout > .panel.dynamic-sticky'));
+  if (!panels.length) return;
+
+  const state = new Map();
+  panels.forEach(p => state.set(p, { offset: null, lastScrollY: window.scrollY }));
+
+  function isStackedLayout(){ return window.matchMedia('(max-width:900px), (orientation: portrait)').matches; }
+  function topbarHeight(){ return topbarEl ? topbarEl.getBoundingClientRect().height : 0; }
+
+  function update(){
+    if (isStackedLayout()) return; 
+    const tbH = topbarHeight();
+    const viewportH = window.innerHeight;
+    const availableH = viewportH - tbH;
+    const scrollY = window.scrollY;
+
+    panels.forEach(panel => {
+      const s = state.get(panel);
+      const panelH = panel.offsetHeight;
+
+      if (panelH <= availableH) {
+        panel.style.top = tbH + 'px';
+        s.offset = tbH;
+        s.lastScrollY = scrollY;
+        return;
+      }
+      const maxOffset = tbH;
+      const minOffset = availableH - panelH;
+      if (s.offset === null) s.offset = maxOffset; 
+      const delta = scrollY - s.lastScrollY;
+      s.lastScrollY = scrollY;
+      let newOffset = s.offset - delta;
+      newOffset = Math.max(minOffset, Math.min(maxOffset, newOffset));
+      s.offset = newOffset;
+      panel.style.top = newOffset + 'px';
+    });
+  }
+
+  let ticking = false;
+  function onScroll(){
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => { update(); ticking = false; });
+  }
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', () => {
+    state.forEach(s => { s.offset = null; s.lastScrollY = window.scrollY; });
+    update();
+  });
+
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(() => update());
+    panels.forEach(p => ro.observe(p));
+  }
+  update();
+})();
+
+// ===== THANH SCROLL NGANG NỔI =====
+(function setupFloatingHScroll() {
+  const floatingBar = document.getElementById('floatingHScroll');
+  const floatingInner = document.getElementById('floatingHScrollInner');
+  const tableWrap = document.querySelector('.table-wrap');
+  if (!floatingBar || !floatingInner || !tableWrap) return;
+
+  let isSyncingFromBar = false;
+  let isSyncingFromTable = false;
+
+  function updateBar() {
+    const scrollable = tableWrap.scrollWidth > tableWrap.clientWidth + 2;
+    floatingInner.style.width = tableWrap.scrollWidth + 'px';
+    if (!isSyncingFromTable) {
+      isSyncingFromBar = true;
+      floatingBar.scrollLeft = tableWrap.scrollLeft;
+      isSyncingFromBar = false;
+    }
+    floatingBar.classList.toggle('show', scrollable);
+  }
+
+  floatingBar.addEventListener('scroll', () => {
+    if (isSyncingFromBar) return;
+    isSyncingFromTable = true;
+    tableWrap.scrollLeft = floatingBar.scrollLeft;
+    isSyncingFromTable = false;
+  }, { passive: true });
+
+  tableWrap.addEventListener('scroll', () => {
+    if (isSyncingFromTable) return;
+    isSyncingFromBar = true;
+    floatingBar.scrollLeft = tableWrap.scrollLeft;
+    isSyncingFromBar = false;
+  }, { passive: true });
+
+  window.addEventListener('resize', updateBar, { passive: true });
+
+  if (window.ResizeObserver) {
+    new ResizeObserver(updateBar).observe(tableWrap);
+  }
+
+  window.updateFloatingHScroll = updateBar;
+})();
+
+// ===== KIỂM TRA PHIÊN BẢN & ĐỒNG BỘ CẬP NHẬT =====
+let checkSyncRunning = false;
+async function checkAndSyncUpdates() {
+  if (checkSyncRunning) return;
+  checkSyncRunning = true;
+  try {
+    const json = await gsFetch(CONFIG_SCRIPT_URL, 'listReports', HARDCODED_SECRET_KEY, {});
+    if (!json || json.status !== 'success' || !Array.isArray(json.reports)) return;
+
+    const remoteReports = json.reports;
+    const localReports = getLocalReportsCache() || [];
+
+    const isListChanged = JSON.stringify(remoteReports) !== JSON.stringify(localReports);
+
+    const currentLocalReport = localReports.find(r => String(r.id) === String(currentReportId));
+    const currentRemoteReport = remoteReports.find(r => String(r.id) === String(currentReportId));
+
+    let currentVersionChanged = false;
+    if (currentLocalReport && currentRemoteReport) {
+      if (String(currentLocalReport.version || '') !== String(currentRemoteReport.version || '') ||
+          String(currentLocalReport.updated_at || '') !== String(currentRemoteReport.updated_at || '')) {
+        currentVersionChanged = true;
+      }
+    }
+
+    const hasNewData = isListChanged || currentVersionChanged;
+    if (hasNewData) {
+      const updateDateRaw = (currentRemoteReport && currentRemoteReport.updated_at) || '';
+      const updateDateStr = formatUpdateDate(updateDateRaw);
+      showUpdateFoundPopup(updateDateStr);
+
+      setLocalReportsCache(remoteReports);
+      REPORTS = remoteReports;
+      renderReportsList();
+      renderSourceMenu();
+
+      if (currentReportId) {
+        safeStorage.remove(getLsDataKey(currentReportId));
+        await selectReport(currentReportId, { silent: true, forceRemote: true });
+      }
+
+      showUpdateDonePopup();
+    }
+
+    if (currentReportId) {
+      dataConfirmedLatestByReport[String(currentReportId)] = Date.now();
+    }
+    renderLastUpdated();
+
+    if (hasNewData) {
+      setTimeout(() => showToast('✅ Đã cập nhật dữ liệu mới nhất (vừa xong).'), 3600);
+    } else {
+      showToast('✅ Dữ liệu đang là bản mới nhất.');
+    }
+  } catch (e) {
+    console.warn('Tự động kiểm tra phiên bản thất bại (có thể offline):', e);
+  } finally {
+    checkSyncRunning = false;
+  }
+}
+
+// ===== KHỞI CHẠY ỨNG DỤNG =====
+(async function bootstrap(){
+  setupInfiniteScroll();
+  let loadedFromCache = false;
+
+  const cachedReports = getLocalReportsCache();
+  if (cachedReports && cachedReports.length > 0) {
+    REPORTS = cachedReports;
+    renderReportsList();
+    renderSourceMenu();
+
+    const remembered = safeStorage.get(LAST_REPORT_KEY);
+    const defaultId = remembered && REPORTS.some(r => String(r.id) === String(remembered)) ? remembered : REPORTS[0].id;
+
+    try {
+      await selectReport(defaultId, { silent: true });
+      loadedFromCache = true;
+    } catch (e) {
+      loadedFromCache = false;
+    }
+  }
+
+  if (!loadedFromCache) {
+    showEmptyState('Đang tải danh sách nguồn dữ liệu...');
+    try {
+      await refreshReportsList();
+    } catch (err) {
+      showEmptyState('Không tải được cấu hình report. Mở Console (F12) để xem lỗi chi tiết.');
+      showToast('Không tải được danh sách nguồn dữ liệu.', true);
+      return;
+    }
+  }
+
+  if(!REPORTS.length){ 
+    showEmptyState('Chưa có nguồn dữ liệu nào. Bấm "Quản lý nguồn dữ liệu" ở góc trên để thêm một Google Sheet.'); 
+    return; 
+  }
+
+  setTimeout(() => {
+    checkAndSyncUpdates();
+  }, CHECK_VERSION_DELAY_MS);
+
+  setInterval(() => {
+    checkAndSyncUpdates();
+    renderLastUpdated();
+  }, CHECK_VERSION_INTERVAL_MS);
+})();
+</script>
+</body>
+</html>
